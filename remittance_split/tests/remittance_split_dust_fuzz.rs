@@ -40,7 +40,8 @@ fn init_split(
     sb: u32,
     si: u32,
 ) {
-    let token = Address::generate(env);
+    let admin = Address::generate(env);
+    let token = env.register_stellar_asset_contract_v2(admin).address();
     client.initialize_split(owner, &0, &token, &sp, &sg, &sb, &si);
 }
 

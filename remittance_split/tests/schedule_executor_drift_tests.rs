@@ -43,7 +43,8 @@ fn setup(env: &Env) -> (Address, RemittanceSplitClient<'_>) {
     let client = RemittanceSplitClient::new(env, &contract_id);
 
     let owner = Address::generate(env);
-    let token_addr = Address::generate(env);
+    let usdc_admin = Address::generate(env);
+    let token_addr = env.register_stellar_asset_contract_v2(usdc_admin).address();
     client.initialize_split(&owner, &0, &token_addr, &50, &30, &15, &5);
 
     (owner, client)

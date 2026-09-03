@@ -9,6 +9,7 @@ mod tests {
     use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env, String, Vec};
 
     fn setup(env: &Env) -> InsuranceClient<'_> {
+        env.budget().reset_unlimited();
         let id = env.register_contract(None, Insurance);
         let c = InsuranceClient::new(env, &id);
         c.init(&Address::generate(env));
@@ -155,7 +156,12 @@ mod tests {
         let page = c.get_active_policies(&owner, &0, &5);
         assert_eq!(page.items.len(), 5);
         assert_eq!(page.count, 5);
-        assert_eq!(page.next_cursor, 6);
+        assert_eq!(page.next_cursor, 5);
+
+        let page2 = c.get_active_policies(&owner, &page.next_cursor, &5);
+        assert_eq!(page2.items.len(), 5);
+        assert_eq!(page2.count, 5);
+        assert_eq!(page2.next_cursor, 0);
     }
 
     #[test]
@@ -288,7 +294,7 @@ mod tests {
             &None,
         );
 
-        // premium = 0 (min_premium - 1) → InvalidPremium
+        // premium = 0 (min_premium - 1) → MonthlyPremiumTooLow
         assert_eq!(
             c.try_create_policy(
                 &Address::generate(&env),
@@ -300,10 +306,10 @@ mod tests {
             )
             .unwrap_err()
             .unwrap(),
-            InsuranceError::InvalidPremium,
+            InsuranceError::MonthlyPremiumTooLow,
         );
 
-        // premium = max_premium + 1 → InvalidPremium
+        // premium = max_premium + 1 → MonthlyPremiumTooHigh
         assert_eq!(
             c.try_create_policy(
                 &Address::generate(&env),
@@ -315,10 +321,10 @@ mod tests {
             )
             .unwrap_err()
             .unwrap(),
-            InsuranceError::InvalidPremium,
+            InsuranceError::MonthlyPremiumTooHigh,
         );
 
-        // coverage = min_coverage - 1 (i.e. 0) → InvalidCoverageAmount
+        // coverage = min_coverage - 1 (i.e. 0) → CoverageAmountTooLow
         assert_eq!(
             c.try_create_policy(
                 &Address::generate(&env),
@@ -330,10 +336,10 @@ mod tests {
             )
             .unwrap_err()
             .unwrap(),
-            InsuranceError::InvalidCoverageAmount,
+            InsuranceError::CoverageAmountTooLow,
         );
 
-        // coverage = max_coverage + 1 → InvalidCoverageAmount
+        // coverage = max_coverage + 1 → CoverageAmountTooHigh
         assert_eq!(
             c.try_create_policy(
                 &Address::generate(&env),
@@ -345,7 +351,7 @@ mod tests {
             )
             .unwrap_err()
             .unwrap(),
-            InsuranceError::InvalidCoverageAmount,
+            InsuranceError::CoverageAmountTooHigh,
         );
     }
 
@@ -408,7 +414,7 @@ mod tests {
     #[test]
     fn test_overflow_safety() {
         // A premium near i128::MAX is caught by max_premium before any
-        // arithmetic — no panic, just InvalidPremium.
+        // arithmetic — no panic, just MonthlyPremiumTooHigh.
         let env = Env::default();
         env.mock_all_auths();
         let c = setup(&env);
@@ -423,13 +429,14 @@ mod tests {
             )
             .unwrap_err()
             .unwrap(),
-            InsuranceError::InvalidPremium,
+            InsuranceError::MonthlyPremiumTooHigh,
         );
     }
 
     // ── Helper: initialise contract with a known owner ────────────────────────
 
     fn setup_with_owner(env: &Env) -> (InsuranceClient<'_>, Address) {
+        env.budget().reset_unlimited();
         let id = env.register_contract(None, Insurance);
         let c = InsuranceClient::new(env, &id);
         let contract_owner = Address::generate(env);
@@ -664,9 +671,11 @@ mod tests {
         for i in MAX_POLICIES + 1..=MAX_POLICIES * 2 {
             full.push_back(i);
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivePolicies, &full);
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::ActivePolicies, &full);
+        });
 
         assert_eq!(
             c.try_reactivate_policy(&owner, &pid).unwrap_err().unwrap(),
@@ -1131,9 +1140,13 @@ mod tests {
         let c = InsuranceClient::new(&env, &contract_id);
 
         let caller = Address::generate(&env);
+        let orch = Address::generate(&env);
+        env.as_contract(&contract_id, || {
+            remitwise_common::set_trusted_orchestrator(&env, &orch);
+        });
 
         // pay_premium on uninitialized contract returns false
-        assert!(!c.pay_premium(&caller, &1u32));
+        assert!(!c.pay_premium(&orch, &0, &caller, &1u32));
     }
 
     #[test]
@@ -1162,7 +1175,8 @@ mod tests {
 
         // get_active_policies on uninitialized contract returns empty page
         let page = c.get_active_policies(&owner, &0u32, &10u32);
-        assert_eq!(page.count, 0u32);
+        assert_eq!(page.count, 0);
+        assert_eq!(page.items.len(), 0);
     }
 
     #[test]
@@ -1499,12 +1513,14 @@ mod tests {
         for i in 1..=MAX_POLICIES {
             full.push_back(i);
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivePolicies, &full);
-        env.storage()
-            .instance()
-            .set(&DataKey::PolicyCount, &MAX_POLICIES);
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::ActivePolicies, &full);
+            env.storage()
+                .instance()
+                .set(&DataKey::PolicyCount, &MAX_POLICIES);
+        });
 
         assert_eq!(
             c.try_create_policy(
@@ -1536,12 +1552,14 @@ mod tests {
         for i in 1..=MAX_POLICIES + 1 {
             over.push_back(i);
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivePolicies, &over);
-        env.storage()
-            .instance()
-            .set(&DataKey::PolicyCount, &(MAX_POLICIES + 1));
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::ActivePolicies, &over);
+            env.storage()
+                .instance()
+                .set(&DataKey::PolicyCount, &(MAX_POLICIES + 1));
+        });
 
         assert_eq!(
             c.try_create_policy(
@@ -1586,12 +1604,14 @@ mod tests {
             full.push_back(i);
         }
         assert_eq!(full.len(), MAX_POLICIES);
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivePolicies, &full);
-        env.storage()
-            .instance()
-            .set(&DataKey::PolicyCount, &MAX_POLICIES);
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::ActivePolicies, &full);
+            env.storage()
+                .instance()
+                .set(&DataKey::PolicyCount, &MAX_POLICIES);
+        });
 
         // At cap — create must be rejected.
         assert_eq!(
@@ -1627,7 +1647,7 @@ mod tests {
         );
     }
 
-    /// Aggregating MAX_POLICIES policies at the maximum per-type premium
+    /// Aggregating MAX_POLICIES_PER_OWNER policies at the maximum per-type premium
     /// must return the correct total without panicking.
     #[test]
     fn max_policies_total_premium_at_cap_aggregates_correctly() {
@@ -1640,8 +1660,8 @@ mod tests {
         // Pick Health's max_premium for a large-but-valid value.
         let premium: i128 = 500_000_000_000i128;
 
-        // Create MAX_POLICIES real policies at max premium.
-        for _ in 0..MAX_POLICIES {
+        // Create MAX_POLICIES_PER_OWNER real policies at max premium.
+        for _ in 0..MAX_POLICIES_PER_OWNER {
             c.create_policy(
                 &owner,
                 &n(&env, "Big"),
@@ -1653,7 +1673,7 @@ mod tests {
         }
 
         let total = c.get_total_monthly_premium(&owner);
-        let expected = premium.saturating_mul(MAX_POLICIES as i128);
+        let expected = premium.saturating_mul(MAX_POLICIES_PER_OWNER as i128);
         assert_eq!(
             total, expected,
             "total premium at cap must aggregate correctly"
@@ -1689,12 +1709,14 @@ mod tests {
             full.push_back(i);
         }
         assert_eq!(full.len(), MAX_POLICIES);
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivePolicies, &full);
-        env.storage()
-            .instance()
-            .set(&DataKey::PolicyCount, &MAX_POLICIES);
+        env.as_contract(&c.address, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::ActivePolicies, &full);
+            env.storage()
+                .instance()
+                .set(&DataKey::PolicyCount, &MAX_POLICIES);
+        });
 
         // Bob — who has zero policies — must be rejected because the
         // *global* cap is full.

@@ -66,12 +66,15 @@ fn test_orchestrated_multisig_flow() {
         .unwrap()
         .unwrap();
 
-    let mock_usdc = Address::generate(&env);
+    let usdc_admin = Address::generate(&env);
+    let mock_usdc = env.register_stellar_asset_contract_v2(usdc_admin).address();
     remittance_client.initialize_split(
         &admin, &0u64, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32,
     );
 
     savings_client.init();
+
+    bills_client.init_admin(&admin, &172800);
 
     // `create_policy` requires the insurance contract to be initialized first.
     insurance_client.init(&admin);
@@ -94,6 +97,12 @@ fn test_orchestrated_multisig_flow() {
         &bills_id,
         &insurance_id,
     );
+
+    family_wallet_client.set_trusted_orchestrator(&admin, &orchestrator_id);
+    remittance_client.set_trusted_orchestrator(&admin, &orchestrator_id);
+    savings_client.set_trusted_orchestrator(&orchestrator_id, &orchestrator_id);
+    bills_client.set_trusted_orchestrator(&admin, &orchestrator_id);
+    insurance_client.set_trusted_orchestrator(&admin, &orchestrator_id);
 
     // Setup goals/bills/policies for the user
     let goal_id = savings_client.create_goal(
@@ -120,6 +129,7 @@ fn test_orchestrated_multisig_flow() {
         &CoverageType::Health,
         &100i128,
         &50000i128,
+        &None,
     );
 
     // 3. Scenario: Quorum not met
@@ -175,7 +185,14 @@ fn test_orchestrated_multisig_flow() {
     assert!(result_still_fails.is_err());
 
     // Sign to reach quorum
-    family_wallet_client.sign_transaction(&member1, &tx_id);
+    let sign_res = family_wallet_client.sign_transaction(&member1, &tx_id);
+    assert_eq!(sign_res, true);
+
+    let member_user = family_wallet_client.get_family_member(&user).unwrap();
+    assert_eq!(member_user.role, FamilyRole::Admin);
+
+    let check_res = family_wallet_client.check_spending_limit(&orchestrator_id, &0, &user, &total_amount);
+    assert_eq!(check_res, true);
 
     // Now quorum is met, user is Admin, flow should succeed.
     // The non-`try_` client method panics on Err, so a bare call asserts success.

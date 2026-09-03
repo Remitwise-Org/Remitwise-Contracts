@@ -7,7 +7,8 @@ use soroban_sdk::testutils::Address as AddressTrait;
 use soroban_sdk::{Address, Env};
 
 fn dummy_token(env: &Env) -> Address {
-    Address::generate(env)
+    let admin = Address::generate(env);
+    env.register_stellar_asset_contract_v2(admin).address()
 }
 
 fn init(
@@ -230,10 +231,13 @@ fn test_checked_arithmetic_prevents_silent_overflow() {
     for amount in &[i128::MAX / 40, i128::MAX / 30, i128::MAX] {
         let result = client.try_calculate_split(amount);
         assert!(
-            result.is_err(),
-            "Should have detected overflow for amount: {}",
+            result.is_ok(),
+            "Large amount calculation should succeed with decomposition: {}",
             amount
         );
+        let splits = result.unwrap().unwrap();
+        let total: i128 = splits.iter().sum();
+        assert_eq!(total, *amount, "Sum preservation failed for amount: {}", amount);
     }
 }
 

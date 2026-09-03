@@ -11,14 +11,18 @@ use alloc::vec::Vec as StdVec;
 
 const PERIOD: u64 = 30 * 86_400;
 
-fn setup_env() -> (Env, InsuranceClient<'static>) {
+fn setup_env() -> (Env, InsuranceClient<'static>, Address) {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
-    (env, client)
+    let orch = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
+    (env, client, orch)
 }
 
 fn create_policy_at(env: &Env, client: &InsuranceClient, owner: &Address, t: u64) -> u32 {
@@ -64,7 +68,7 @@ fn paid_events_for(env: &Env) -> SorobanVec<(Address, SorobanVec<Val>, Val)> {
 
 #[test]
 fn test_pay_premium_on_time_advances_one_period() {
-    let (env, client) = setup_env();
+    let (env, client, orch) = setup_env();
     let owner = Address::generate(&env);
 
     let created_at = 1_000_000u64;
@@ -72,7 +76,7 @@ fn test_pay_premium_on_time_advances_one_period() {
     let due = client.get_policy(&id).unwrap().next_payment_date;
 
     env.ledger().with_mut(|li| li.timestamp = due);
-    assert!(client.pay_premium(&owner, &id));
+    assert!(client.pay_premium(&orch, &0, &owner, &id));
 
     let p = client.get_policy(&id).unwrap();
     assert_eq!(p.next_payment_date, due + PERIOD);
@@ -80,14 +84,14 @@ fn test_pay_premium_on_time_advances_one_period() {
 
 #[test]
 fn test_pay_premium_early_keeps_cadence_anchored_to_due_date() {
-    let (env, client) = setup_env();
+    let (env, client, orch) = setup_env();
     let owner = Address::generate(&env);
 
     let id = create_policy_at(&env, &client, &owner, 1_000_000u64);
     let due = client.get_policy(&id).unwrap().next_payment_date;
 
     env.ledger().with_mut(|li| li.timestamp = due - 10);
-    assert!(client.pay_premium(&owner, &id));
+    assert!(client.pay_premium(&orch, &0, &owner, &id));
 
     let p = client.get_policy(&id).unwrap();
     assert_eq!(p.next_payment_date, due + PERIOD);
@@ -95,7 +99,7 @@ fn test_pay_premium_early_keeps_cadence_anchored_to_due_date() {
 
 #[test]
 fn test_pay_premium_late_moves_due_to_future_date() {
-    let (env, client) = setup_env();
+    let (env, client, orch) = setup_env();
     let owner = Address::generate(&env);
 
     let id = create_policy_at(&env, &client, &owner, 1_000_000u64);
@@ -104,7 +108,7 @@ fn test_pay_premium_late_moves_due_to_future_date() {
     // 95 days late: should skip enough 30-day periods so new due is in the future.
     let now = due + (95 * 86_400);
     env.ledger().with_mut(|li| li.timestamp = now);
-    assert!(client.pay_premium(&owner, &id));
+    assert!(client.pay_premium(&orch, &0, &owner, &id));
 
     let p = client.get_policy(&id).unwrap();
     assert!(p.next_payment_date > now);
@@ -113,7 +117,7 @@ fn test_pay_premium_late_moves_due_to_future_date() {
 
 #[test]
 fn test_batch_pay_premiums_advances_each_policy_independently_and_counts() {
-    let (env, client) = setup_env();
+    let (env, client, _orch) = setup_env();
     let owner = Address::generate(&env);
 
     let id_a = create_policy_at(&env, &client, &owner, 1_000_000u64);
@@ -151,8 +155,8 @@ fn test_batch_pay_premiums_advances_each_policy_independently_and_counts() {
 }
 
 #[test]
-fn test_batch_pay_premiums_skips_when_policy_not_found() {
-    let (env, client) = setup_env();
+fn test_batch_pay_premiums_skips_inactive_and_foreign_policies() {
+    let (env, client, orch) = setup_env();
     let owner = Address::generate(&env);
     let id_a = create_policy_at(&env, &client, &owner, 1_000_000u64);
     let ids = soroban_sdk::vec![&env, id_a, 999u32];
@@ -163,14 +167,14 @@ fn test_batch_pay_premiums_skips_when_policy_not_found() {
 
 #[test]
 fn test_premium_paid_event_next_payment_date_matches_stored_value() {
-    let (env, client) = setup_env();
+    let (env, client, orch) = setup_env();
     let owner = Address::generate(&env);
 
     let id = create_policy_at(&env, &client, &owner, 2_000_000u64);
     let due = client.get_policy(&id).unwrap().next_payment_date;
 
     env.ledger().with_mut(|li| li.timestamp = due + 1);
-    assert!(client.pay_premium(&owner, &id));
+    assert!(client.pay_premium(&orch, &0, &owner, &id));
 
     let stored = client.get_policy(&id).unwrap().next_payment_date;
     let events = paid_events_for(&env);
@@ -184,7 +188,7 @@ fn test_premium_paid_event_next_payment_date_matches_stored_value() {
 
 #[test]
 fn test_batch_event_next_payment_dates_match_each_policy_value() {
-    let (env, client) = setup_env();
+    let (env, client, _orch) = setup_env();
     let owner = Address::generate(&env);
 
     let id1 = create_policy_at(&env, &client, &owner, 1_000_000u64);
@@ -219,7 +223,7 @@ fn test_batch_event_next_payment_dates_match_each_policy_value() {
 
 #[test]
 fn test_pay_premium_at_exact_period_boundary_is_accepted() {
-    let (env, client) = setup_env();
+    let (env, client, orch) = setup_env();
     let owner = Address::generate(&env);
 
     let created_at = 1_000_000u64;
@@ -230,7 +234,7 @@ fn test_pay_premium_at_exact_period_boundary_is_accepted() {
     env.ledger().with_mut(|li| li.timestamp = due);
 
     // Call pay_premium - must be accepted (return true)
-    assert!(client.pay_premium(&owner, &id));
+    assert!(client.pay_premium(&orch, &0, &owner, &id));
 
     let p = client.get_policy(&id).unwrap();
     // Verify it advances by exactly one period
@@ -239,7 +243,7 @@ fn test_pay_premium_at_exact_period_boundary_is_accepted() {
 
 #[test]
 fn test_batch_pay_premiums_at_exact_period_boundary_is_accepted() {
-    let (env, client) = setup_env();
+    let (env, client, _orch) = setup_env();
     let owner = Address::generate(&env);
 
     let id_a = create_policy_at(&env, &client, &owner, 1_000_000u64);

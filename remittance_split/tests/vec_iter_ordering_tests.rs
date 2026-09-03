@@ -36,7 +36,8 @@ fn setup(env: &Env) -> (RemittanceSplitClient<'_>, Address) {
     let client = RemittanceSplitClient::new(env, &contract_id);
 
     let owner = Address::generate(env);
-    let token = Address::generate(env);
+    let usdc_admin = Address::generate(env);
+    let token = env.register_stellar_asset_contract_v2(usdc_admin).address();
     // percentages in basis points: 50% / 30% / 15% / 5%
     client.initialize_split(&owner, &0, &token, &5000, &3000, &1500, &500);
 

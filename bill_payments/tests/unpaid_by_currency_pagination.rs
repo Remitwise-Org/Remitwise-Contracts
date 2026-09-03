@@ -70,10 +70,11 @@ fn setup(env: &Env) -> (BillPaymentsClient<'_>, Address) {
 /// Configure the trusted orchestrator required by the cross-contract epoch
 /// guard on `pay_bill`. Returns the orchestrator address to pass to
 /// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
-fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+fn setup_orchestrator(client: &BillPaymentsClient, _admin: &Address) -> Address {
     let orch = Address::generate(&client.env);
-    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-    client.set_trusted_orchestrator(admin, &orch);
+    client.env.as_contract(&client.address, || {
+        remitwise_common::set_trusted_orchestrator(&client.env, &orch);
+    });
     orch
 }
 

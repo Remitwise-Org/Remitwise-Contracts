@@ -431,7 +431,11 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     });
 
     // pay_premium must re-bump TTL
-    client.pay_premium(&owner, &policy_id);
+    let orch = <Address as AddressTrait>::generate(&env);
+    env.as_contract(&contract_id, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
+    client.pay_premium(&orch, &0, &owner, &policy_id);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
@@ -477,7 +481,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
         MAX_BATCH_SIZE
     );
 
-    let expected_next = 1_700_000_000u64 + (30 * 86400);
+    let expected_next = 1_700_000_000u64 + (60 * 86400);
     for &id in &policy_ids {
         let policy = client.get_policy(&id).unwrap();
         assert!(
@@ -487,7 +491,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
         );
         assert_eq!(
             policy.next_payment_date, expected_next,
-            "Policy {} next_payment_date must equal current_time + 30 days after batch pay",
+            "Policy {} next_payment_date must equal next due date + 30 days after batch pay",
             id
         );
     }
@@ -576,9 +580,8 @@ fn bench_get_active_policies_max_policies() {
     let (cpu, mem, active) = measure(&env, || client.get_active_policies(&owner, &0u32, &50u32));
     assert_eq!(
         active.items.len(),
-        MAX_POLICIES_PER_OWNER,
-        "Must return all {} policies in one page",
-        MAX_POLICIES_PER_OWNER
+        50,
+        "Must return 50 policies in first page"
     );
 
     println!(

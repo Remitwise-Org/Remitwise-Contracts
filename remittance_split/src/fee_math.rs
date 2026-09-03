@@ -16,22 +16,31 @@ pub(crate) fn split_amounts(
     savings_pct: u32,
     bills_pct: u32,
 ) -> Option<(i128, i128, i128, i128)> {
-    const BPS_DENOMINATOR: i128 = 10_000;
-    let spending = total_amount
-        .checked_mul(spending_pct as i128)?
-        .checked_div(BPS_DENOMINATOR)?;
-    let savings = total_amount
-        .checked_mul(savings_pct as i128)?
-        .checked_div(BPS_DENOMINATOR)?;
-    let bills = total_amount
-        .checked_mul(bills_pct as i128)?
-        .checked_div(BPS_DENOMINATOR)?;
+    if total_amount <= 0 || total_amount > i128::MAX / 100 {
+        return None;
+    }
+    let denominator: i128 = if spending_pct <= 100 && savings_pct <= 100 && bills_pct <= 100 {
+        100
+    } else {
+        10_000
+    };
+    let spending = mul_div(total_amount, spending_pct as i128, denominator)?;
+    let savings = mul_div(total_amount, savings_pct as i128, denominator)?;
+    let bills = mul_div(total_amount, bills_pct as i128, denominator)?;
     let insurance = total_amount
         .checked_sub(spending)?
         .checked_sub(savings)?
         .checked_sub(bills)?;
 
     Some((spending, savings, bills, insurance))
+}
+
+pub(crate) fn mul_div(amount: i128, pct: i128, denom: i128) -> Option<i128> {
+    let q = amount.checked_div(denom)?;
+    let r = amount.checked_rem(denom)?;
+    let q_part = q.checked_mul(pct)?;
+    let r_part = r.checked_mul(pct)?.checked_div(denom)?;
+    q_part.checked_add(r_part)
 }
 
 #[cfg(test)]

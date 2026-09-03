@@ -12,14 +12,4 @@ soroban-sdk = { version = "=21.7.7", default-features = false }
 remitwise-common = { path = "../remitwise-common" }
 
 [dev-dependencies]
-# (no testutils)
-
-[profile.release]
-opt-level = "z"
-overflow-checks = true
-debug = 0
-strip = "symbols"
-debug-assertions = false
-panic = "abort"
-codegen-units = 1
-lto = true
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }

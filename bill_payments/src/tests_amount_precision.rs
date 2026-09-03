@@ -1,31 +1,31 @@
-#![cfg(test)]
+// Regression coverage for Issue #1737 — bill scheduling and execution:
+// amount precision and overflow.
+//
+// The invariant under test (enforced at every boundary by the shared
+// `remitwise_common::amount` rules and checked arithmetic in
+// `execute_due_bill_schedules` / `batch_pay_bills` / `pay_bill`):
+//
+// 1. Amounts are exact integers in `[MIN_AMOUNT, MAX_AMOUNT]` — zero,
+//    negative, and oversized values are rejected **before any state change**.
+// 2. Arithmetic (next_due advancement, id counters, unpaid totals) is
+//    **checked** — overflow is rejected deterministically (typed error or
+//    revert) instead of silently saturating/truncating.
+// 3. Rejected, stale, and repeated operations leave **no partial state**.
+// 4. The unpaid-total cache always equals an independent recomputation of
+//    the sum of unpaid bill amounts (the "oracle" below).
+//
+// Values deliberately covered: zero, minimum (1), maximum (MAX_AMOUNT),
+// near-overflow (MAX_AMOUNT + 1, i128::MAX), fractional-scale amounts (any
+// i128 digit pattern must round-trip exactly — there is no decimal
+// arithmetic to round), and conversion boundaries (interval → frequency_days,
+// seconds-per-day multiplication).
 
-extern crate std;
-
-//! Regression coverage for Issue #1737 — bill scheduling and execution:
-//! amount precision and overflow.
-//!
-//! The invariant under test (enforced at every boundary by the shared
-//! `remitwise_common::amount` rules and checked arithmetic in
-//! `execute_due_bill_schedules` / `batch_pay_bills` / `pay_bill`):
-//!
-//! 1. Amounts are exact integers in `[MIN_AMOUNT, MAX_AMOUNT]` — zero,
-//!    negative, and oversized values are rejected **before any state change**.
-//! 2. Arithmetic (next_due advancement, id counters, unpaid totals) is
-//!    **checked** — overflow is rejected deterministically (typed error or
-//!    revert) instead of silently saturating/truncating.
-//! 3. Rejected, stale, and repeated operations leave **no partial state**.
-//! 4. The unpaid-total cache always equals an independent recomputation of
-//!    the sum of unpaid bill amounts (the "oracle" below).
-//!
-//! Values deliberately covered: zero, minimum (1), maximum (MAX_AMOUNT),
-//! near-overflow (MAX_AMOUNT + 1, i128::MAX), fractional-scale amounts (any
-//! i128 digit pattern must round-trip exactly — there is no decimal
-//! arithmetic to round), and conversion boundaries (interval → frequency_days,
-//! seconds-per-day multiplication).
-
-use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError, BillSchedule};
+use crate::{
+    BillPayments, BillPaymentsClient, BillPaymentsError, BillSchedule,
+    DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS, MAX_FREQUENCY_DAYS, MAX_SCHEDULE_INTERVAL,
+};
 use remitwise_common::{MAX_AMOUNT, MIN_AMOUNT};
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{
     symbol_short,
     testutils::EnvTestConfig,
@@ -50,10 +50,11 @@ fn setup() -> (Env, BillPaymentsClient<'static>, Address) {
 /// Configure the trusted orchestrator required by the cross-contract epoch
 /// guard on `pay_bill`. Returns the orchestrator address to pass to
 /// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
-fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+fn setup_orchestrator(client: &BillPaymentsClient, _admin: &Address) -> Address {
     let orch = Address::generate(&client.env);
-    client.init_admin(admin, &bill_payments::DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-    client.set_trusted_orchestrator(admin, &orch);
+    client.env.as_contract(&client.address, || {
+        remitwise_common::set_trusted_orchestrator(&client.env, &orch);
+    });
     orch
 }
 
@@ -224,7 +225,7 @@ fn test_modify_bill_schedule_rejects_invalid_amounts_no_partial_state() {
 fn test_schedule_interval_cap_rejects_oversized_interval() {
     let (env, client, owner) = setup();
     let now = env.ledger().timestamp();
-    let max_interval = bill_payments::MAX_SCHEDULE_INTERVAL;
+    let max_interval = MAX_SCHEDULE_INTERVAL;
 
     // Boundary: exactly MAX_SCHEDULE_INTERVAL is accepted.
     let id = create_schedule(&client, &owner, 100, now + 1_000, max_interval);
@@ -271,7 +272,7 @@ fn test_interval_to_frequency_days_conversion_boundaries() {
         &owner,
         100,
         now + 1_000,
-        bill_payments::MAX_SCHEDULE_INTERVAL,
+        MAX_SCHEDULE_INTERVAL,
     );
 
     set_ledger_time(&env, 1, now + 2_000);
@@ -282,7 +283,7 @@ fn test_interval_to_frequency_days_conversion_boundaries() {
     assert_eq!(bills.get(0).unwrap().frequency_days, 1);
     assert_eq!(
         bills.get(1).unwrap().frequency_days,
-        bill_payments::MAX_FREQUENCY_DAYS,
+        MAX_FREQUENCY_DAYS,
         "max interval must convert exactly to MAX_FREQUENCY_DAYS"
     );
 }
@@ -575,7 +576,12 @@ fn test_schedule_lifecycle_amounts_exact_end_to_end() {
     assert_eq!(bill.schedule_id, Some(schedule_id));
     assert_eq!(client.get_total_unpaid(&owner), amount);
 
-    // Pay the generated bill → total reaches zero exactly.
+    // Pay the generated bill: recurring renewal spawns child, total remains exact.
     client.pay_bill(&orch, &0, &owner, &bill.id);
+    assert_eq!(client.get_total_unpaid(&owner), amount);
+
+    // Cancel the newly spawned recurring child bill -> total reaches zero exactly.
+    let child_id = bill.id + 1;
+    client.cancel_bill(&owner, &child_id);
     assert_eq!(client.get_total_unpaid(&owner), 0);
 }

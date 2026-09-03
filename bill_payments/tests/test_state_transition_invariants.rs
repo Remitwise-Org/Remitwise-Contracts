@@ -37,7 +37,7 @@
 
 use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError};
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, Env, String, Vec as SorobanVec};
+use soroban_sdk::{Address, Env, String, Vec};
 
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -101,7 +101,11 @@ impl InvariantHarness {
             .pay_bill(&self.orchestrator, &0, &self.owner, &bill_id);
     }
 
-    fn try_pay_at(&self, bill_id: u32, timestamp: u64) -> Result<(), BillPaymentsError> {
+    fn try_pay_at(
+        &self,
+        bill_id: u32,
+        timestamp: u64,
+    ) -> Result<Result<(), soroban_sdk::ConversionError>, Result<BillPaymentsError, soroban_sdk::InvokeError>> {
         self.env.ledger().set_timestamp(timestamp);
         self.client
             .try_pay_bill(&self.orchestrator, &0, &self.owner, &bill_id)
@@ -111,7 +115,10 @@ impl InvariantHarness {
         self.client.cancel_bill(&self.owner, &bill_id);
     }
 
-    fn try_cancel(&self, bill_id: u32) -> Result<(), BillPaymentsError> {
+    fn try_cancel(
+        &self,
+        bill_id: u32,
+    ) -> Result<Result<(), soroban_sdk::ConversionError>, Result<BillPaymentsError, soroban_sdk::InvokeError>> {
         self.client.try_cancel_bill(&self.owner, &bill_id)
     }
 
@@ -219,7 +226,7 @@ fn test_paid_to_active_via_reverse() {
     assert!(h.is_paid(bill_id));
 
     h.client
-        .reverse_payment(&h.owner, &bill_id, &150);
+        .reverse_payment(&h.orchestrator, &0, &h.owner, &bill_id, &150);
 
     assert!(!h.is_paid(bill_id));
     let bill = h.client.get_bill(&bill_id).unwrap();
@@ -711,11 +718,8 @@ fn test_schedule_lifecycle_create_execute_cancel() {
     assert_eq!(executed.get(0).unwrap(), schedule_id);
 
     // A bill was created
-    assert!(h.client.get_bill(&(h.client.get_next_bill_id())).is_some() || {
-        // Bill exists with some ID > 0
-        let page = h.client.get_unpaid_bills(&h.owner, &0, &10);
-        page.count > 0
-    });
+    let page = h.client.get_unpaid_bills(&h.owner, &0, &10);
+    assert!(page.count > 0);
 
     // Cancel the schedule
     h.client.cancel_bill_schedule(&h.owner, &schedule_id);
@@ -893,7 +897,6 @@ fn test_batch_pay_transitions_all_to_paid() {
     let id2 = h.create_bill("B", 200, due_date, false, 0, "XLM");
     let id3 = h.create_bill("C", 300, due_date, false, 0, "XLM");
 
-    let ids = SorobanVec::new(&h.env);
     // Build batch vector
     let mut batch = Vec::new(&h.env);
     batch.push_back(id1);
@@ -998,15 +1001,15 @@ fn test_batch_pay_recurring_spawns_children() {
     assert!(h.is_paid(id1));
     assert!(h.is_paid(id2));
 
-    // Both children spawned
-    assert!(h.bill_exists(id1 + 1));
-    assert!(h.bill_exists(id2 + 1));
+    // Both children spawned (IDs 3 and 4, since IDs 1 and 2 are the parents)
+    assert!(h.bill_exists(3));
+    assert!(h.bill_exists(4));
 
-    let child1 = h.client.get_bill(&(id1 + 1)).unwrap();
+    let child1 = h.client.get_bill(&3).unwrap();
     assert!(!child1.paid);
     assert!(child1.recurring);
 
-    let child2 = h.client.get_bill(&(id2 + 1)).unwrap();
+    let child2 = h.client.get_bill(&4).unwrap();
     assert!(!child2.paid);
     assert!(child2.recurring);
 

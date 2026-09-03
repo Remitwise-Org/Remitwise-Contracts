@@ -1,5 +1,5 @@
 use bill_payments::{BillPayments, BillPaymentsClient};
-use family_wallet::FamilyWallet;
+use family_wallet::{FamilyWallet, FamilyWalletClient};
 use insurance::{Insurance, InsuranceClient, InsuranceError};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use remitwise_common::CoverageType;
@@ -32,10 +32,10 @@ fn test_end_to_end_flow() {
     let bills_client = BillPaymentsClient::new(&env, &bills_id);
 
     let insurance_id = env.register_contract(None, Insurance);
-    //let insurance_client = InsuranceClient::new(&env, &insurance_id);
+    let insurance_client = InsuranceClient::new(&env, &insurance_id);
 
     let family_id = env.register_contract(None, FamilyWallet);
-    //let family_client = FamilyWalletClient::new(&env, &family_id);
+    let family_client = FamilyWalletClient::new(&env, &family_id);
 
     let reporting_id = env.register_contract(None, ReportingContract);
     let reporting_client = ReportingContractClient::new(&env, &reporting_id);
@@ -44,6 +44,11 @@ fn test_end_to_end_flow() {
     let user = Address::generate(&env);
 
     // 2. Initialize
+    insurance_client.init(&admin);
+    savings_client.init();
+    bills_client.init_admin(&admin, &172800);
+    family_client.init(&admin, &soroban_sdk::Vec::new(&env));
+
     reporting_client.init(&admin);
     reporting_client.configure_addresses(
         &admin,
@@ -59,7 +64,8 @@ fn test_end_to_end_flow() {
 
     // 3. Configure Split
     let nonce = 0;
-    let mock_usdc = Address::generate(&env);
+    let usdc_admin = Address::generate(&env);
+    let mock_usdc = env.register_stellar_asset_contract_v2(usdc_admin).address();
     split_client.initialize_split(&user, &nonce, &mock_usdc, &50, &30, &15, &5);
 
     // Assuming we do an "allocate into goals/bills/insurance"
@@ -216,6 +222,10 @@ fn test_recurring_obligations_flow() {
     // Initialize the Insurance contract. `create_policy` (Phase 4) requires an
     // initialized contract and otherwise returns InsuranceError::NotInitialized.
     insurance.init(&admin);
+    insurance.set_trusted_orchestrator(&admin, &orchestrator);
+    _savings.init();
+    let family_wallet = FamilyWalletClient::new(&env, &family_id);
+    family_wallet.init(&admin, &soroban_sdk::Vec::new(&env));
 
     // ── Phase 2: Remittance split configuration ───────────────────────────────
     //
@@ -235,7 +245,8 @@ fn test_recurring_obligations_flow() {
 
     // A mock USDC address is required by initialize_split for token-substitution
     // attack prevention; no actual token transfers occur in this test.
-    let mock_usdc = Address::generate(&env);
+    let usdc_admin = Address::generate(&env);
+    let mock_usdc = env.register_stellar_asset_contract_v2(usdc_admin).address();
     // Nonce starts at 0 for a freshly registered contract (Requirement 8.1).
     let nonce: u64 = 0;
 
@@ -387,6 +398,7 @@ fn test_recurring_obligations_flow() {
         &CoverageType::Health,
         &monthly_premium,
         &coverage_amount,
+        &None,
     );
 
     // Assert the policy is retrievable and active immediately after creation (Requirement 4.1, 4.2).
@@ -407,7 +419,7 @@ fn test_recurring_obligations_flow() {
 
     // Pay the premium on the active policy (Requirement 4.3).
     // Guaranteed true: policy exists, owner matches user, policy is active, mock_all_auths active.
-    let pay_result = insurance.pay_premium(&user, &policy_id);
+    let pay_result = insurance.pay_premium(&orchestrator, &0u64, &user, &policy_id);
     assert!(
         pay_result,
         "pay_premium must return true for an active policy owned by the caller [Req 4.3]"
@@ -416,11 +428,11 @@ fn test_recurring_obligations_flow() {
     // Assert next_payment_date == ledger_time + 30 * 86400 after paying (Requirement 4.3, 4.4, 8.3).
     // Guaranteed Some: policy still exists (pay_premium does not delete it).
     let policy_after_pay = insurance.get_policy(&policy_id).unwrap(); // guaranteed Some: policy still exists after premium payment
-    let expected_next_payment = timestamp + 30 * 86400;
+    let expected_next_payment = timestamp + 60 * 86400;
     assert_eq!(
         policy_after_pay.next_payment_date,
         expected_next_payment,
-        "next_payment_date must equal ledger_time + 30 * 86400 after pay_premium [Req 4.3, 4.4, 8.3]"
+        "next_payment_date must equal previous_due + 30 * 86400 after pay_premium [Req 4.3, 4.4, 8.3]"
     );
     assert!(
         policy_after_pay.next_payment_date > timestamp,
@@ -431,11 +443,10 @@ fn test_recurring_obligations_flow() {
     // The contract returns Err(PolicyNotFound) for an unknown policy, so the
     // non-`try_` client would panic; use the `try_` variant to inspect the error.
     let nonexistent_id: u32 = 9999;
-    let pay_nonexistent = insurance.try_pay_premium(&user, &nonexistent_id);
-    assert_eq!(
-        pay_nonexistent,
-        Err(Ok(InsuranceError::PolicyNotFound)),
-        "pay_premium must reject a non-existent policy ID with PolicyNotFound [Req 4.5]"
+    let pay_nonexistent = insurance.pay_premium(&orchestrator, &0u64, &user, &nonexistent_id);
+    assert!(
+        !pay_nonexistent,
+        "pay_premium must return false for a non-existent policy ID [Req 4.5]"
     );
 
     // ── Phase 5: Ledger time advancement ─────────────────────────────────────

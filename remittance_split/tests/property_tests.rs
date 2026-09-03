@@ -59,7 +59,8 @@ fn init_split(
     b: u32,
     i: u32,
 ) {
-    let token = Address::generate(env);
+    let admin = Address::generate(env);
+    let token = env.register_stellar_asset_contract_v2(admin).address();
     client.initialize_split(owner, &0, &token, &s, &g, &b, &i);
 }
 
@@ -237,7 +238,8 @@ proptest! {
         (a, b, c, d) in invalid_percentages(),
     ) {
         let (env, client, owner) = setup();
-        let token = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = env.register_stellar_asset_contract_v2(admin).address();
 
         let result = client.try_initialize_split(&owner, &0, &token, &a, &b, &c, &d);
         prop_assert!(

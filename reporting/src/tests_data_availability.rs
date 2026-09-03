@@ -56,6 +56,7 @@ fn policy(env: &Env, id: u32) -> InsurancePolicy {
         created_at: PERIOD_START,
         last_payment_at: PERIOD_START,
         next_payment_date: PERIOD_END,
+        deactivated_at: 0,
     }
 }
 
@@ -265,7 +266,7 @@ mod availability_insurance {
                 },
                 MODE_OVER_LIMIT => {
                     let mut items = Vec::new(&env);
-                    items.push_back(cursor + 1);
+                    items.push_back(policy(&env, cursor + 1));
                     PolicyPage {
                         count: items.len(),
                         items,
@@ -274,7 +275,7 @@ mod availability_insurance {
                 }
                 _ => {
                     let mut items = Vec::new(&env);
-                    items.push_back(1);
+                    items.push_back(policy(&env, 1));
                     PolicyPage {
                         count: items.len(),
                         items,

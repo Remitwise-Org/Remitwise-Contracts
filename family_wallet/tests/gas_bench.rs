@@ -393,6 +393,7 @@ fn bench_archive_executed_n(n: u32) {
 
     // All entries have executed_at = START_TS; FAR_FUTURE_TS is the cutoff so
     // the strict less-than comparison archives every entry.
+    env.ledger().set_timestamp(FAR_FUTURE_TS);
     let (cpu, mem, archived_count) = measure(&env, || {
         client.archive_old_transactions(&owner, &FAR_FUTURE_TS)
     });
@@ -531,10 +532,17 @@ fn bench_get_pending_page_first_n(n: u32) {
         page.items.len(),
         "page.count and items.len() must agree for consistent pagination",
     );
-    assert!(
-        page.next_cursor > 0,
-        "next_cursor must point forward for n > 50"
-    );
+    if n > 50 {
+        assert!(
+            page.next_cursor > 0,
+            "next_cursor must point forward for n > 50"
+        );
+    } else {
+        assert_eq!(
+            page.next_cursor, 0,
+            "next_cursor must be 0 when all items fit in page"
+        );
+    }
 
     emit_bench(
         "get_pending_transactions_page",

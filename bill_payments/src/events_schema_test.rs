@@ -326,8 +326,7 @@ fn batch_pay_bills_emits_paid_events_matching_pay_bill() {
     let mut batch = Vec::new(&env);
     batch.push_back(bill_a);
     batch.push_back(bill_b);
-    let result = client.batch_pay_bills(&owner, &batch);
-    assert!(result.is_ok(), "batch must succeed");
+    client.batch_pay_bills(&owner, &batch);
 
     let mut paid_events = 0u32;
     for (_cid, topics, data) in env.events().all() {

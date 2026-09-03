@@ -52,7 +52,7 @@ pub const MAX_ITEMS_PER_REPORT: u32 = remitwise_common::MAX_TOP_N;
 /// See `docs/HEALTH_SCORE.md` (at the repository root) for the full scoring
 /// model, inputs, and worked examples.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HealthScore {
     /// Overall score, clamped to `0..=100`.
     pub score: u32,
@@ -66,7 +66,7 @@ pub struct HealthScore {
 
 /// Category breakdown with amount and percentage
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CategoryBreakdown {
     pub category: Category,
     pub amount: i128,
@@ -75,7 +75,7 @@ pub struct CategoryBreakdown {
 
 /// Trend data comparing two periods
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrendData {
     pub current_amount: i128,
     pub previous_amount: i128,
@@ -97,7 +97,7 @@ pub enum DataAvailability {
 
 /// Remittance summary report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemittanceSummary {
     pub total_received: i128,
     pub total_allocated: i128,
@@ -109,7 +109,7 @@ pub struct RemittanceSummary {
 
 /// Savings progress report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SavingsReport {
     pub total_goals: u32,
     pub completed_goals: u32,
@@ -122,7 +122,7 @@ pub struct SavingsReport {
 
 /// Bill payment compliance report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BillComplianceReport {
     pub total_bills: u32,
     pub paid_bills: u32,
@@ -139,7 +139,7 @@ pub struct BillComplianceReport {
 
 /// Insurance coverage report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InsuranceReport {
     pub active_policies: u32,
     pub total_coverage: i128,
@@ -156,7 +156,7 @@ pub struct InsuranceReport {
 /// See `reporting/docs/FAMILY_SPENDING_REPORT.md` for the full schema and
 /// `DataAvailability` degradation rules.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FamilySpendingReport {
     pub member_breakdown: Vec<FamilyMemberSpending>,
     pub total_members: u32,
@@ -169,7 +169,7 @@ pub struct FamilySpendingReport {
 
 /// Per-member family spending breakdown entry.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FamilyMemberSpending {
     /// Family-wallet member address.
     pub member: Address,
@@ -184,7 +184,7 @@ pub struct FamilyMemberSpending {
 
 /// Overall financial health report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FinancialHealthReport {
     pub health_score: HealthScore,
     pub remittance_summary: RemittanceSummary,
@@ -205,7 +205,7 @@ pub struct FinancialHealthReport {
 ///
 /// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TopNBillsReport {
     pub items: Vec<Bill>,
     pub total_amount: i128,
@@ -223,7 +223,7 @@ pub struct TopNBillsReport {
 ///
 /// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TopNSavingsReport {
     pub items: Vec<SavingsGoal>,
     pub total_target: i128,
@@ -236,7 +236,7 @@ pub struct TopNSavingsReport {
 
 /// Contract addresses configuration
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContractAddresses {
     pub remittance_split: Address,
     pub savings_goals: Address,
@@ -280,6 +280,14 @@ pub enum ReportingError {
     InvalidViewer = 15,
 }
 
+/// Returns the first element of a `soroban_sdk::Vec`, or an error if empty.
+pub fn first_or_error<T>(vec: &soroban_sdk::Vec<T>) -> Result<T, ReportingError>
+where
+    T: soroban_sdk::TryFromVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+{
+    vec.get(0).ok_or(ReportingError::Unauthorized)
+}
+
 /// Explicit report data scopes that can be delegated independently.
 #[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -292,7 +300,7 @@ pub enum ReportScope {
 
 /// The subject and viewer identity recorded in an ACL event.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewerGrant {
     pub owner: Address,
     pub viewer: Address,
@@ -315,7 +323,7 @@ pub enum ReportEvent {
 
 /// Archived report - compressed summary
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchivedReport {
     pub user: Address,
     pub period_key: u64,
@@ -326,7 +334,7 @@ pub struct ArchivedReport {
 
 /// Paginated result for archived reports
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchivedPage {
     pub items: Vec<ArchivedReport>,
     pub next_cursor: u32,
@@ -335,7 +343,7 @@ pub struct ArchivedPage {
 
 /// Storage statistics for monitoring
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StorageStats {
     pub active_reports: u32,
     pub archived_reports: u32,
@@ -405,7 +413,7 @@ pub trait FamilyWalletTrait {
 
 // Data structures from other contracts (needed for client traits)
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SavingsGoal {
     pub id: u32,
     pub owner: Address,
@@ -419,7 +427,7 @@ pub struct SavingsGoal {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GoalPage {
     pub items: Vec<SavingsGoal>,
     pub next_cursor: u32,
@@ -427,7 +435,7 @@ pub struct GoalPage {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Bill {
     pub id: u32,
     pub owner: Address,
@@ -446,7 +454,7 @@ pub struct Bill {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BillPage {
     pub items: Vec<Bill>,
     pub next_cursor: u32,
@@ -472,22 +480,20 @@ pub struct InsurancePolicy {
     pub created_at: u64,
     pub last_payment_at: u64,
     pub next_payment_date: u64,
+    pub deactivated_at: u64,
 }
 
 /// Mirror of the real `insurance::PolicyPage`.
-///
-/// `items` is a list of policy IDs (`Vec<u32>`); fetch each full policy with
-/// `InsuranceClient::get_policy`.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PolicyPage {
-    pub items: Vec<u32>,
+    pub items: Vec<InsurancePolicy>,
     pub next_cursor: u32,
     pub count: u32,
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MemberAddressPage {
     pub items: Vec<Address>,
     pub next_cursor: u32,
@@ -495,7 +501,7 @@ pub struct MemberAddressPage {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpendingPeriod {
     pub period_type: u32,
     pub period_start: u64,
@@ -503,7 +509,7 @@ pub struct SpendingPeriod {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpendingTracker {
     pub current_spent: i128,
     pub last_tx_timestamp: u64,
@@ -1426,11 +1432,9 @@ impl ReportingContract {
         let mut total_coverage = 0i128;
         let mut active_policies = 0u32;
 
-        for policy_id in result.items.iter() {
-            if let Some(policy) = insurance_client.get_policy(&policy_id) {
-                active_policies += 1;
-                total_coverage += policy.coverage_amount;
-            }
+        for policy in result.items.iter() {
+            active_policies += 1;
+            total_coverage += policy.coverage_amount;
         }
 
         let annual_premium = monthly_premium.saturating_mul(12);

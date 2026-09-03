@@ -152,8 +152,10 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "bill_payments"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "remitwise-common",
  "soroban-sdk",
+ "testutils",
 ]
 
 [[package]]
@@ -1085,6 +1087,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 name = "orchestrator"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "remitwise-common",
  "soroban-sdk",
  "testutils",
@@ -1343,8 +1346,10 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "remittance_split"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "remitwise-common",
  "soroban-sdk",
+ "testutils",
 ]
 
 [[package]]
@@ -1382,6 +1387,7 @@ dependencies = [
 name = "reporting"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "remitwise-common",
  "soroban-sdk",
  "testutils",
@@ -1453,8 +1459,11 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "savings_goals"
 version = "0.1.0"
 dependencies = [
+ "data_migration",
+ "proptest",
  "remitwise-common",
  "soroban-sdk",
+ "testutils",
 ]
 
 [[package]]
@@ -1470,7 +1479,6 @@ dependencies = [
  "reporting",
  "savings_goals",
  "soroban-sdk",
- "testutils",
 ]
 
 [[package]]

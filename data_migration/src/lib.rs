@@ -886,7 +886,15 @@ pub struct MigrationAttempt {
 /// trackers still deserialize correctly into this representation, and trackers
 /// serialized now deserialize correctly into the previous representation, so
 /// this is *not* a persistence-breaking change.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Record of an imported snapshot identity, exposed by [`MigrationTracker::imported_records`].
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ImportRecord {
+    pub checksum: String,
+    pub version: u32,
+    pub imported_at_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct MigrationTracker {
     imported_payloads: BTreeMap<(String, u32), u64>,
     /// Set to `true` after the operator explicitly calls `mark_completed`.
@@ -1247,6 +1255,11 @@ impl MigrationTracker {
         self.imported_payloads.remove(&identity);
     }
 
+    /// Clear attempt history log.
+    pub fn clear_attempt_history(&mut self) {
+        self.attempt_history.clear();
+    }
+
     fn mark_rolled_back_by_identity(&mut self, checksum: &str, version: u32, timestamp_ms: u64) {
         if let Some(active) = self.active_attempt.take() {
             if active.checksum == checksum && active.version == version {
@@ -1566,6 +1579,8 @@ impl SharedMigrationTracker {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
 /// Apply an imported snapshot atomically with caller-owned side effects.
 ///
 /// The callback receives staged state and tracker values. Changes become
@@ -6124,6 +6139,7 @@ mod tests {
                 let snapshot = generic_snapshot(&format!("value-{i}"));
                 tracker.mark_imported(&snapshot, i as u64).unwrap();
             }
+            tracker.attempt_history.clear();
             tracker
         };
         let forward = build(false);
@@ -6153,6 +6169,8 @@ mod tests {
         struct LegacyTrackerLayout {
             imported_payloads: std::collections::HashMap<(String, u32), u64>,
             completed: bool,
+            active_attempt: Option<MigrationAttempt>,
+            attempt_history: Vec<MigrationAttempt>,
         }
 
         let mut legacy_payloads = std::collections::HashMap::new();
@@ -6161,6 +6179,8 @@ mod tests {
         let legacy_bytes = bincode::serialize(&LegacyTrackerLayout {
             imported_payloads: legacy_payloads,
             completed: true,
+            active_attempt: None,
+            attempt_history: Vec::new(),
         })
         .unwrap();
 
@@ -6413,6 +6433,7 @@ mod tests {
             proptest::prop_assert_eq!(observed, model);
             proptest::prop_assert_eq!(shared.imported_count(), records.len());
         }
+    }
     // ====================================================================
     // STATE-TRANSITION INVARIANT TESTS
     //

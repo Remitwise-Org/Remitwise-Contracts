@@ -15,23 +15,25 @@ members = [
     "data_migration",
     "reporting",
     "orchestrator",
+    "bill_payments",
+    "insurance",
+    "remittance_split",
+    "savings_goals",
     "cli",
     "scenarios",
     "testutils",
     "integration_tests",
     "remitwise-common",
 ]
-exclude = [
-    "bill_payments",
-    "insurance",
-    "remittance_split",
-    "savings_goals",
-]
 default-members = [
     "family_wallet",
     "data_migration",
     "reporting",
     "orchestrator",
+    "bill_payments",
+    "insurance",
+    "remittance_split",
+    "savings_goals",
 ]
 resolver = "2"
 

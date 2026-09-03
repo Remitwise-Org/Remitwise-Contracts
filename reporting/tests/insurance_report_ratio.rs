@@ -56,7 +56,7 @@ impl InsuranceStub {
         let mut items = Vec::new(&env);
         for p in all.iter() {
             if p.active {
-                items.push_back(p.id);
+                items.push_back(p);
             }
         }
         let count = items.len();
@@ -116,6 +116,7 @@ fn policy(
         created_at: 0,
         last_payment_at: 0,
         next_payment_date: 0,
+        deactivated_at: 0,
     }
 }
 

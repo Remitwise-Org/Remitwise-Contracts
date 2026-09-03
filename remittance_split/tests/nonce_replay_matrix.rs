@@ -13,7 +13,7 @@ use remittance_split::{
 };
 use soroban_sdk::{
     symbol_short,
-    testutils::Address as _,
+    testutils::{Address as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
     Address, Env,
 };
@@ -72,7 +72,7 @@ fn signed_hash(f: &Fixture<'_>, request: &DistributeUsdcRequest) -> soroban_sdk:
     f.client.get_request_hash(request)
 }
 
-fn assert_rejected(result: Result<bool, Result<RemittanceSplitError, soroban_sdk::Error>>) {
+fn assert_rejected<T, E>(result: Result<T, E>) {
     assert!(
         result.is_err(),
         "invalid nonce policy input must be rejected"

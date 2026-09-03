@@ -278,7 +278,20 @@ macro_rules! mock_insurance {
                 ) -> PolicyPage {
                     let mut items = Vec::new(&env);
                     for i in 0u32..$n {
-                        items.push_back(i);
+                        items.push_back(InsurancePolicy {
+                            id: i,
+                            owner: Address::generate(&env),
+                            name: SorobanString::from_str(&env, "Bench Policy"),
+                            coverage_type: CoverageType::Health,
+                            monthly_premium: 200i128,
+                            coverage_amount: 50_000i128,
+                            external_ref: None,
+                            active: true,
+                            created_at: 0,
+                            last_payment_at: 0,
+                            next_payment_date: 1_800_000_000,
+                            deactivated_at: 0,
+                        });
                     }
                     let count = items.len();
                     PolicyPage {
@@ -302,6 +315,7 @@ macro_rules! mock_insurance {
                             created_at: 0,
                             last_payment_at: 0,
                             next_payment_date: 1_800_000_000,
+                            deactivated_at: 0,
                         })
                     } else {
                         None

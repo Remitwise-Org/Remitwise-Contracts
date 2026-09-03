@@ -7,6 +7,7 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
     Address, Env, String,
 };
+use testutils::set_ledger_time;
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {
@@ -439,7 +440,7 @@ fn test_extend_goal_deadline_within_cap() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000, &false);
 
     let new_target = 2000000000 + 86400; // one day past the current target
     let updated = client.extend_goal_deadline(&user, &id, &new_target);
@@ -459,7 +460,7 @@ fn test_extend_goal_deadline_past_ledger_cap() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000, &false);
 
     // MAX_EXTENSION_SECONDS is 5 years from NOW; ask for 5 years and a day
     // to land just past the cap (and still past the current target_date,
@@ -478,7 +479,7 @@ fn test_extend_goal_deadline_rejects_non_forward_move() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000, &false);
 
     client.extend_goal_deadline(&user, &id, &2000000000);
 }

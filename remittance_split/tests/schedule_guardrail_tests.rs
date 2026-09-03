@@ -7,7 +7,8 @@ use remittance_split::{
 use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 
 fn dummy_token(env: &Env) -> Address {
-    Address::generate(env)
+    let admin = Address::generate(env);
+    env.register_stellar_asset_contract_v2(admin).address()
 }
 
 fn init(

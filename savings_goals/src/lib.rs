@@ -2,7 +2,7 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use remitwise_common::{
     bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
-    guard_cross_contract_write, require_matching_cross_contract_epoch, set_trusted_orchestrator,
+    guard_cross_contract_write, set_trusted_orchestrator,
     CrossContractEpochError, TrustedOrchestratorError,
     reversible_op::{ReversibleOpError, SavingsGoalsReversible},
     EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,
@@ -30,6 +30,139 @@ pub enum Error {
 // Storage TTL constants
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct GoalCreatedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,    // Initial amount (0)
+    pub new_total: i128, // Initial total (0)
+    pub name: String,
+    pub target_amount: i128,
+    pub target_date: u64,
+    pub locked: bool,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct FundsAddedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct FundsWithdrawnEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct GoalCompletedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,    // Final contribution amount
+    pub new_total: i128, // Total amount reached
+    pub name: String,
+    pub timestamp: u64,
+}
+
+/// Emitted by `lock_goal` (`locked: true`) and `unlock_goal` (`locked: false`).
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct GoalLockEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub locked: bool,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleCreatedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleModifiedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleCancelledEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted once per successful execution of a due schedule by
+/// `execute_due_savings_schedules`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleExecutedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+/// Emitted alongside `ScheduleExecutedEvent` when one or more recurring
+/// intervals were skipped (delayed execution).
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleMissedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub missed_count: u32,
+    pub timestamp: u64,
+}
+
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = remitwise_common::PERSISTENT_LIFETIME_THRESHOLD;
+pub const PERSISTENT_BUMP_AMOUNT: u32 = remitwise_common::PERSISTENT_BUMP_AMOUNT;
+
+/// Pagination constants
+pub const DEFAULT_PAGE_LIMIT: u32 = 20;
+pub const MAX_PAGE_LIMIT: u32 = 50;
+
+/// Maximum safe goal balance allowed by the contract.
+const MAX_SAFE_GOAL_BALANCE: i128 = i128::MAX / 2;
+
+/// Maximum byte length for goal names to prevent storage bloat and DoS attacks.
+const MAX_GOAL_NAME_LEN_BYTES: u32 = 32;
+
+/// Maximum number of goals (active + archived) allowed per owner.
+const MAX_GOALS_PER_OWNER: u32 = 2000;
+
+pub const GOAL_CREATED: Symbol = symbol_short!("created");
+pub const GOAL_COMPLETED: Symbol = symbol_short!("completed");
+pub const FUNDS_ADDED: Symbol = symbol_short!("funds_add");
+pub const FUNDS_WITHDRAWN: Symbol = symbol_short!("funds_rem");
 
 /// Furthest into the future (from the current ledger time) a goal's
 /// `target_date` may be pushed in a single `extend_goal_deadline` call.
@@ -252,8 +385,6 @@ pub enum SavingsGoalError {
     SnapshotNotFound = 16,
     SnapshotTooOld = 17,
 }
-#[contract]
-pub struct SavingsGoalContract;
 
 impl ArchivedSavingsGoal {
     fn from_goal(env: &Env, goal: SavingsGoal) -> Self {
@@ -1087,18 +1218,14 @@ impl SavingsGoalContract {
     /// * If `caller` does not authorize the transaction
     pub fn add_to_goal(
         env: Env,
-        orchestrator: Address,
-        epoch: u64,
         caller: Address,
         goal_id: u32,
         amount: i128,
     ) -> Result<i128, SavingsGoalError> {
-        guard_cross_contract_write(&env, &orchestrator, epoch)
-            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
-        if amount < 0 {
+        if amount <= 0 {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
             return Err(SavingsGoalError::InvalidAmount);
         }
@@ -1197,6 +1324,134 @@ impl SavingsGoalContract {
         }
 
         Self::append_audit(&env, symbol_short!("add"), &caller, true);
+        Ok(new_total)
+    }
+
+    /// Cross-contract entry point: add funds to a goal on behalf of a user.
+    ///
+    /// Called exclusively by the trusted orchestrator during a remittance fan-out.
+    /// Validates both the orchestrator identity and the current cross-contract epoch
+    /// before delegating to the same core logic as the user-facing [`add_to_goal`].
+    ///
+    /// # Arguments
+    /// * `orchestrator` - The calling orchestrator contract address (must be trusted)
+    /// * `epoch`        - Actor epoch from the orchestrator (must match stored XC epoch)
+    /// * `caller`       - The end-user whose goal receives the funds (must authorize)
+    /// * `goal_id`      - ID of the target savings goal
+    /// * `amount`       - Positive amount to credit (in stroops)
+    ///
+    /// # Errors
+    /// Panics with `CrossContractEpochError::EpochMismatch` if the orchestrator is
+    /// not trusted or the epoch is stale.  All other errors follow `SavingsGoalError`.
+    pub fn add_to_goal_xc(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        goal_id: u32,
+        amount: i128,
+    ) -> Result<i128, SavingsGoalError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
+
+        if amount <= 0 {
+            Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+            return Err(SavingsGoalError::InvalidAmount);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
+            Some(g) => g,
+            None => {
+                Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+                return Err(SavingsGoalError::GoalNotFound);
+            }
+        };
+
+        if goal.owner != caller {
+            Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+            return Err(SavingsGoalError::Unauthorized);
+        }
+
+        let previously_completed = goal.current_amount >= goal.target_amount;
+        let new_total = match goal.current_amount.checked_add(amount) {
+            Some(v) => v,
+            None => {
+                Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+                return Err(SavingsGoalError::Overflow);
+            }
+        };
+
+        if new_total > MAX_SAFE_GOAL_BALANCE {
+            Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+            return Err(SavingsGoalError::Overflow);
+        }
+
+        goal.current_amount = new_total;
+        let was_completed = new_total >= goal.target_amount;
+        let now = env.ledger().timestamp();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            FUNDS_ADDED,
+            FundsAddedEvent {
+                goal_id,
+                owner: caller.clone(),
+                amount,
+                new_total,
+                timestamp: now,
+            },
+        );
+
+        env.events().publish(
+            (symbol_short!("savings"), SavingsEvent::FundsAdded),
+            (goal_id, caller.clone(), amount),
+        );
+
+        if was_completed && !previously_completed {
+            let completed_event = GoalCompletedEvent {
+                goal_id,
+                owner: caller.clone(),
+                amount,
+                new_total,
+                name: goal.name.clone(),
+                timestamp: now,
+            };
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::State,
+                EventPriority::Medium,
+                GOAL_COMPLETED,
+                completed_event.clone(),
+            );
+            env.events().publish((GOAL_COMPLETED,), completed_event);
+            env.events().publish(
+                (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                (goal_id, caller.clone()),
+            );
+        }
+
+        Self::append_audit(&env, symbol_short!("add_xc"), &caller, true);
         Ok(new_total)
     }
 
@@ -1362,13 +1617,13 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, Error> {
+    ) -> Result<i128, SavingsGoalError> {
         // Access control: require caller authorization
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::WITHDRAW);
 
         if amount <= 0 {
-            return Err(Error::InvalidAmount);
+            return Err(SavingsGoalError::InvalidAmount);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1385,19 +1640,27 @@ impl SavingsGoalContract {
             }
         };
 
-        let mut goal = goals.get(goal_id).ok_or(Error::GoalNotFound)?;
-
         // Access control: verify caller is the owner
         if goal.owner != caller {
-            return Err(Error::Unauthorized);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         if goal.locked {
-            return Err(Error::GoalLocked);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::GoalLocked);
+        }
+
+        if let Some(unlock_date) = goal.unlock_date {
+            if env.ledger().timestamp() < unlock_date {
+                Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+                return Err(SavingsGoalError::GoalLocked);
+            }
         }
 
         if amount > goal.current_amount {
-            return Err(Error::InsufficientBalance);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::InsufficientBalance);
         }
 
         goal.current_amount = goal
@@ -1592,13 +1855,11 @@ impl SavingsGoalContract {
         // Extend storage TTL
         Self::extend_instance_ttl(&env);
 
-        let mut goals: Map<u32, SavingsGoal> = env
+        let mut goal = env
             .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+            .expect("Goal not found");
 
         // Access control: verify caller is the owner
         if goal.owner != caller {
@@ -1615,10 +1876,9 @@ impl SavingsGoalContract {
         }
 
         goal.target_date = new_target_date;
-        goals.set(goal_id, goal);
         env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
 
         new_target_date
     }

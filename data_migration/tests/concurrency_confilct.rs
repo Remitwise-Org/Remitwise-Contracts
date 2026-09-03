@@ -494,7 +494,11 @@ fn reconciliation_artifacts_are_byte_deterministic_across_runs() {
                 .expect("distinct payloads commit");
         }
         match Arc::try_unwrap(tracker) {
-            Ok(shared) => shared.into_inner(),
+            Ok(shared) => {
+                let mut inner = shared.into_inner();
+                inner.clear_attempt_history();
+                inner
+            }
             Err(_) => panic!("no outstanding references may remain after join"),
         }
     };

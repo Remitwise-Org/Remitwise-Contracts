@@ -1660,10 +1660,17 @@ mod testsuit {
             &false,
             &0, &None, &String::from_str(&env, "XLM"), &None);
 
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
+        let schedule_id = client.create_bill_schedule(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &1000,
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &86400,
+        );
         assert_eq!(schedule_id, 1);
 
-        let schedule = client.get_schedule(&schedule_id);
+        let schedule = client.get_bill_schedule(&schedule_id);
         assert!(schedule.is_some());
         let schedule = schedule.unwrap();
         assert_eq!(schedule.next_due, 3000);
@@ -1681,18 +1688,17 @@ mod testsuit {
         env.mock_all_auths();
         set_ledger_time(&env, 1, 1000);
 
-        let bill_id = client.create_bill(
+        let schedule_id = client.create_bill_schedule(
             &owner,
             &String::from_str(&env, "Electricity"),
             &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &86400,
+        );
+        client.modify_bill_schedule(&owner, &schedule_id, &1000, &4000, &172800);
 
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
-        client.modify_schedule(&owner, &schedule_id, &4000, &172800);
-
-        let schedule = client.get_schedule(&schedule_id).unwrap();
+        let schedule = client.get_bill_schedule(&schedule_id).unwrap();
         assert_eq!(schedule.next_due, 4000);
         assert_eq!(schedule.interval, 172800);
     }
@@ -1707,18 +1713,17 @@ mod testsuit {
         env.mock_all_auths();
         set_ledger_time(&env, 1, 1000);
 
-        let bill_id = client.create_bill(
+        let schedule_id = client.create_bill_schedule(
             &owner,
             &String::from_str(&env, "Electricity"),
             &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &86400,
+        );
+        client.cancel_bill_schedule(&owner, &schedule_id);
 
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
-        client.cancel_schedule(&owner, &schedule_id);
-
-        let schedule = client.get_schedule(&schedule_id).unwrap();
+        let schedule = client.get_bill_schedule(&schedule_id).unwrap();
         assert!(!schedule.active);
     }
 
@@ -1732,24 +1737,20 @@ mod testsuit {
         env.mock_all_auths();
         set_ledger_time(&env, 1, 1000);
 
-        let bill_id = client.create_bill(
+        let schedule_id = client.create_bill_schedule(
             &owner,
             &String::from_str(&env, "Electricity"),
             &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &0);
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &0,
+        );
 
         set_ledger_time(&env, 1, 3500);
-        let executed = client.execute_due_schedules();
+        let executed = client.execute_due_bill_schedules();
 
         assert_eq!(executed.len(), 1);
-        assert_eq!(executed.items.get(0).unwrap(), schedule_id);
-
-        let bill = client.get_bill(&bill_id).unwrap();
-        assert!(bill.paid);
+        assert_eq!(executed.get(0).unwrap(), schedule_id);
     }
 
     #[test]
@@ -1762,20 +1763,27 @@ mod testsuit {
         env.mock_all_auths();
         set_ledger_time(&env, 1, 1000);
 
-        let bill_id = client.create_bill(
+        let _bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Electricity"),
             &1000,
             &2000,
             &true,
-            &30, &None, &None, &String::from_str(&env, "XLM"));
+            &30, &None, &String::from_str(&env, "XLM"), &None);
 
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
+        let schedule_id = client.create_bill_schedule(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &1000,
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &86400,
+        );
 
         set_ledger_time(&env, 1, 3500);
-        client.execute_due_schedules();
+        client.execute_due_bill_schedules();
 
-        let schedule = client.get_schedule(&schedule_id).unwrap();
+        let schedule = client.get_bill_schedule(&schedule_id).unwrap();
         assert!(schedule.active);
         assert_eq!(schedule.next_due, 3000 + 86400);
     }
@@ -1790,20 +1798,19 @@ mod testsuit {
         env.mock_all_auths();
         set_ledger_time(&env, 1, 1000);
 
-        let bill_id = client.create_bill(
+        let schedule_id = client.create_bill_schedule(
             &owner,
             &String::from_str(&env, "Electricity"),
             &1000,
-            &2000,
-            &true,
-            &30, &None, &None, &String::from_str(&env, "XLM"));
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &86400,
+        );
 
         set_ledger_time(&env, 1, 3000 + 86400 * 3 + 100);
-        client.execute_due_schedules();
+        client.execute_due_bill_schedules();
 
-        let schedule = client.get_schedule(&schedule_id).unwrap();
+        let schedule = client.get_bill_schedule(&schedule_id).unwrap();
         assert_eq!(schedule.missed_count, 3);
         assert!(schedule.next_due > 3000 + 86400 * 3);
     }
@@ -1818,15 +1825,14 @@ mod testsuit {
         env.mock_all_auths();
         set_ledger_time(&env, 1, 5000);
 
-        let bill_id = client.create_bill(
+        let result = client.try_create_bill_schedule(
             &owner,
             &String::from_str(&env, "Electricity"),
             &1000,
-            &6000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let result = client.try_create_schedule(&owner, &bill_id, &3000, &86400);
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &86400,
+        );
         assert!(result.is_err());
     }
 
@@ -1840,26 +1846,24 @@ mod testsuit {
         env.mock_all_auths();
         set_ledger_time(&env, 1, 1000);
 
-        let bill_id1 = client.create_bill(
+        client.create_bill_schedule(
             &owner,
             &String::from_str(&env, "Electricity"),
             &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let bill_id2 = client.create_bill(
+            &String::from_str(&env, "XLM"),
+            &3000,
+            &86400,
+        );
+        client.create_bill_schedule(
             &owner,
             &String::from_str(&env, "Water"),
             &500,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
+            &String::from_str(&env, "XLM"),
+            &4000,
+            &172800,
+        );
 
-        client.create_schedule(&owner, &bill_id1, &3000, &86400);
-        client.create_schedule(&owner, &bill_id2, &4000, &172800);
-
-        let schedules = client.get_schedules(&owner);
+        let schedules = client.get_bill_schedules(&owner);
         assert_eq!(schedules.len(), 2);
     }
     #[test]
@@ -2169,16 +2173,11 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let _other = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        // Configure the trusted orchestrator under blanket auth first; the
-        // selective mock_auths below deliberately leaves pay_bill's
-        // orchestrator auth unmocked so the guarded call fails with
-        // HostError(Error(Auth, InvalidAction)), matching the expectation.
-        env.mock_all_auths();
         let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
+
+        env.as_contract(&contract_id, || {
+            remitwise_common::set_trusted_orchestrator(&env, &orch);
+        });
 
         client.mock_auths(&[soroban_sdk::testutils::MockAuth {
             address: &owner,
@@ -2192,6 +2191,9 @@ mod testsuit {
                     1000000u64,
                     false,
                     0u32,
+                    Option::<String>::None,
+                    String::from_str(&env, "XLM"),
+                    Option::<soroban_sdk::Vec<String>>::None,
                 )
                     .into_val(&env),
                 sub_invokes: &[],
@@ -2210,7 +2212,7 @@ mod testsuit {
             &None,
         );
 
-        // other tries to pay the bill for owner
+        // other tries to pay the bill for owner without authorization
         client.pay_bill(&orch, &0, &owner, &bill_id);
     }
 
@@ -3628,10 +3630,7 @@ mod testsuit {
         ids.push_back(999);
         ids.push_back(id3);
 
-        let result = client.batch_pay_bills(&owner, &ids);
-
-        // Expected: only ID2 and ID3 were paid. ID1 was skipped (already paid), 999 was skipped (not found).
-        assert!(result.is_ok(), "batch must succeed with skipped entries");
+        client.batch_pay_bills(&owner, &ids);
 
         // Verify states
         assert!(client.get_bill(&id1).unwrap().paid);
@@ -3688,11 +3687,7 @@ mod testsuit {
         ids.push_back(b1); // Bob's bill
         ids.push_back(a2);
 
-        // Alice tries to pay the batch
-        let result = client.batch_pay_bills(&alice, &ids);
-
-        // Expected: only A1 and A2 paid. B1 skipped.
-        assert!(result.is_ok(), "batch must succeed with skipped entries");
+        client.batch_pay_bills(&alice, &ids);
         assert!(client.get_bill(&a1).unwrap().paid);
         assert!(!client.get_bill(&b1).unwrap().paid);
         assert!(client.get_bill(&a2).unwrap().paid);
@@ -3722,8 +3717,7 @@ mod testsuit {
         let mut ids = Vec::new(&env);
         ids.push_back(id1);
 
-        let result = client.batch_pay_bills(&owner, &ids);
-        assert!(result.is_ok(), "batch must succeed");
+        client.batch_pay_bills(&owner, &ids);
 
         // Verify next bill was created atomically
         let next_bill = client.get_bill(&2).unwrap();
@@ -3917,8 +3911,7 @@ mod testsuit {
 
         // Include invalid IDs (non-existent, already paid, wrong owner)
         let bill_ids = soroban_sdk::vec![&env, id1, 999, id2, 888];
-        let result = client.batch_pay_bills(&owner, &bill_ids);
-        assert!(result.is_ok(), "batch must succeed, skipping invalid IDs");
+        client.batch_pay_bills(&owner, &bill_ids);
 
         // Both valid bills are paid
         assert!(client.get_bill(&id1).unwrap().paid);
@@ -3965,8 +3958,7 @@ mod testsuit {
 
         // Both should succeed in batch (no overflow)
         let bill_ids = soroban_sdk::vec![&env, id1, id2];
-        let result = client.batch_pay_bills(&owner, &bill_ids);
-        assert!(result.is_ok(), "batch must succeed without overflow");
+        client.batch_pay_bills(&owner, &bill_ids);
 
         // Verify child bills were created
         assert!(client.get_bill(&id1).unwrap().paid);
@@ -3977,7 +3969,7 @@ mod testsuit {
     }
 
     /// Verify archive_paid_bills is atomic: if the operation succeeds,
-    all bills are archived; if it fails (none qualifying), no state changes.
+    /// all bills are archived; if it fails (none qualifying), no state changes.
     #[test]
     fn test_archive_paid_bills_atomic_no_qualifying() {
         let env = Env::default();

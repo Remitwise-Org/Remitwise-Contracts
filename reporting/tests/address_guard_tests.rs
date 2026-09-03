@@ -1,59 +1,41 @@
-use reporting::{ReportingClient, ReportingError};
-use soroban_sdk::{Address, Env, String};
+#![allow(deprecated)]
+use reporting::{ReportingContract, ReportingContractClient, ReportingError};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[test]
 fn test_addresses_not_configured_error() {
     let env = Env::default();
-    let client = ReportingClient::new(&env, &env.register_contract(None, reporting::Reporting {}));
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
 
-    // Don't configure addresses
+    client.init(&admin);
 
-    // Test each endpoint that requires addresses
-    let result = client.try_submit_report(&Report { /* ... */ });
-    assert!(result.is_err());
-
-    if let Err(e) = result {
-        // Check that it returns the correct error
-        // This depends on how your error handling works
-        assert!(e.to_string().contains("AddressesNotConfigured"));
-    }
+    // Call endpoints before configuring addresses — should return AddressesNotConfigured
+    let result = client.try_get_financial_health_report(&owner, &owner, &1000, &100, &200);
+    assert_eq!(result, Err(Ok(ReportingError::AddressesNotConfigured)));
 }
 
 #[test]
 fn test_addresses_configured_success() {
     let env = Env::default();
-    let client = ReportingClient::new(&env, &env.register_contract(None, reporting::Reporting {}));
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
 
-    // Configure addresses
-    let reporting_contract = env.register_contract(None, reporting::Reporting {});
-    let address = Address::random(&env);
+    client.init(&admin);
 
-    // Set up addresses in storage (implementation depends on your contract)
-    // ...
+    let rs = Address::generate(&env);
+    let sg = Address::generate(&env);
+    let bp = Address::generate(&env);
+    let ins = Address::generate(&env);
+    let fw = Address::generate(&env);
 
-    // Now endpoints should work
-    let result = client.try_submit_report(&Report { /* ... */ });
+    let result = client.try_configure_addresses(&admin, &rs, &sg, &bp, &ins, &fw);
     assert!(result.is_ok());
-}
-
-#[test]
-fn test_all_endpoints_fail_closed() {
-    let env = Env::default();
-    let client = ReportingClient::new(&env, &env.register_contract(None, reporting::Reporting {}));
-
-    // List of all endpoints that require addresses
-    let endpoints: Vec<fn(&ReportingClient) -> Result<(), ContractError>> = vec![
-        // Add all your endpoint functions here
-        |c| c.try_submit_report(&Report { /* ... */ }),
-        |c| c.try_get_report_data(&DataRequest { /* ... */ }),
-        // ... etc
-    ];
-
-    for endpoint in endpoints {
-        let result = endpoint(&client);
-        assert!(
-            result.is_err(),
-            "Endpoint should fail when addresses not configured"
-        );
-    }
+    let stored = client.get_addresses().unwrap();
+    assert_eq!(stored.remittance_split, rs);
 }
