@@ -147,6 +147,65 @@ proptest! {
         );
     }
 }
+
+#[test]
+fn test_emergency_pause_all_clears_stale_unpause_schedule_and_is_idempotent() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    client.init_admin(&admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_pause_admin(&admin, &admin);
+    client.schedule_unpause(&admin, &1_000);
+
+    assert!(!client.is_paused());
+    assert!(client.get_pause_state().paused_since.is_none());
+
+    client.emergency_pause_all(&admin);
+
+    let state = client.get_pause_state();
+    assert!(state.paused);
+    assert_eq!(state.paused_since, Some(100));
+
+    // A stale unpause checkpoint should be cleared when the emergency pause is
+    // established so the admin can recover deterministically without a stale lock.
+    client.unpause(&admin);
+    assert!(!client.is_paused());
+
+    client.emergency_pause_all(&admin);
+    let state = client.get_pause_state();
+    assert!(state.paused);
+    assert_eq!(state.paused_since, Some(100));
+}
+
+#[test]
+fn test_emergency_pause_all_rejects_unauthorized_and_expired_grant_without_mutation() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+
+    client.init_admin(&admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_pause_admin(&admin, &admin);
+
+    let unauthorized = client.try_emergency_pause_all(&attacker);
+    assert_eq!(unauthorized, Err(Ok(BillPaymentsError::UnauthorizedPause)));
+    assert!(!client.is_paused());
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000 + 30 * 24 * 60 * 60 + 1);
+    let expired = client.try_emergency_pause_all(&admin);
+    assert_eq!(expired, Err(Ok(BillPaymentsError::AdminGrantExpired)));
+    assert!(!client.is_paused());
+}
+
 #[cfg(test)]
 mod admin_grant_ttl_tests {
     use super::*;
