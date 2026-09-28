@@ -4802,3 +4802,6 @@ mod test_state_invariants;
 
 #[cfg(test)]
 mod tests_amount_precision;
+
+#[cfg(test)]
+mod pause_query_boundary_tests;
