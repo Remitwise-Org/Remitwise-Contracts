@@ -4802,3 +4802,6 @@ mod test_state_invariants;
 
 #[cfg(test)]
 mod tests_amount_precision;
+
+#[cfg(test)]
+mod upgrade_pre_upgrade_boundary_tests;
