@@ -147,6 +147,7 @@ proptest! {
         );
     }
 }
+
 #[cfg(test)]
 mod admin_grant_ttl_tests {
     use super::*;
@@ -246,5 +247,289 @@ mod admin_grant_ttl_tests {
         // Admin should be able to pause immediately after setup
         let pause_result = client.try_pause(&admin);
         assert!(pause_result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod unpause_failure_boundary_tests {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+
+    /// Deterministic helper: register a fresh contract and return
+    /// (env, client, admin, pause_admin).
+    fn setup() -> (Env, BillPaymentsClient<'static>, Address, Address) {
+        let env = Env::default();
+        env.budget().reset_unlimited();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let pause_admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.init_admin(&admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_pause_admin(&admin, &pause_admin);
+        (env, client, admin, pause_admin)
+    }
+
+    /// Success path: pause then unpause restores normal operation.
+    #[test]
+    fn test_unpause_success_restores_operation() {
+        let (env, client, _admin, pause_admin) = setup();
+
+        client.pause(&pause_admin);
+        // While paused, a writable entrypoint must be rejected.
+        let caller = Address::generate(&env);
+        let dummy = String::from_str(&env, "dummy");
+        let paused_result = client
+            .try_create_bill(
+                &caller,
+                &dummy,
+                &100,
+                &2000000000,
+                &false,
+                &0,
+                &None,
+                &dummy,
+                &None,
+            )
+            .map(|_| ())
+            .map_err(|e| e.unwrap());
+        assert_eq!(paused_result, Err(BillPaymentsError::ContractPaused));
+
+        // Unpause must succeed and restore normal operation.
+        let unpause_result = client.try_unpause(&pause_admin);
+        assert!(unpause_result.is_ok());
+
+        // After unpause, the same entrypoint must no longer be rejected
+        // with ContractPaused (it may fail for other reasons, but not pause).
+        let resumed_result = client
+            .try_create_bill(
+                &caller,
+                &dummy,
+                &100,
+                &2000000000,
+                &false,
+                &0,
+                &None,
+                &dummy,
+                &None,
+            )
+            .map(|_| ())
+            .map_err(|e| e.unwrap());
+        assert_ne!(resumed_result, Err(BillPaymentsError::ContractPaused));
+    }
+
+    /// Rejection: unpause by a non-pause-admin must be rejected.
+    #[test]
+    fn test_unpause_rejects_unauthorized_caller() {
+        let (env, client, _admin, pause_admin) = setup();
+        let attacker = Address::generate(&env);
+
+        client.pause(&pause_admin);
+
+        let result = client.try_unpause(&attacker);
+        assert!(result.is_err(), "unauthorized unpause must be rejected");
+
+        // Contract must remain paused after the rejected attempt.
+        let caller = Address::generate(&env);
+        let dummy = String::from_str(&env, "dummy");
+        let still_paused = client
+            .try_create_bill(
+                &caller,
+                &dummy,
+                &100,
+                &2000000000,
+                &false,
+                &0,
+                &None,
+                &dummy,
+                &None,
+            )
+            .map(|_| ())
+            .map_err(|e| e.unwrap());
+        assert_eq!(still_paused, Err(BillPaymentsError::ContractPaused));
+    }
+
+    /// Boundary: unpause when the contract is not paused.
+    /// Must be deterministic and must not corrupt state.
+    #[test]
+    fn test_unpause_when_not_paused_is_deterministic() {
+        let (_env, client, _admin, pause_admin) = setup();
+
+        // Contract is not paused. Unpause behavior must be deterministic.
+        let first = client.try_unpause(&pause_admin);
+        let second = client.try_unpause(&pause_admin);
+
+        // Both calls must return the same result (idempotent / deterministic).
+        assert_eq!(first, second);
+
+        // Regardless of outcome, the contract must still be operable
+        // (i.e. not left in a paused state by a failed unpause).
+        let caller = Address::generate(&_env);
+        let dummy = String::from_str(&_env, "dummy");
+        let result = client
+            .try_create_bill(
+                &caller,
+                &dummy,
+                &100,
+                &2000000000,
+                &false,
+                &0,
+                &None,
+                &dummy,
+                &None,
+            )
+            .map(|_| ())
+            .map_err(|e| e.unwrap());
+        assert_ne!(result, Err(BillPaymentsError::ContractPaused));
+    }
+
+    /// Boundary: unpause is idempotent when already unpaused.
+    #[test]
+    fn test_unpause_idempotent_after_success() {
+        let (_env, client, _admin, pause_admin) = setup();
+
+        client.pause(&pause_admin);
+        assert!(client.try_unpause(&pause_admin).is_ok());
+
+        // Second unpause must be deterministic and not corrupt state.
+        let second = client.try_unpause(&pause_admin);
+        let third = client.try_unpause(&pause_admin);
+        assert_eq!(second, third);
+    }
+
+    /// Regression: pause -> unpause -> pause -> unpause cycle must be stable.
+    #[test]
+    fn test_unpause_pause_cycle_stable() {
+        let (env, client, _admin, pause_admin) = setup();
+        let caller = Address::generate(&env);
+        let dummy = String::from_str(&env, "dummy");
+
+        for _ in 0..3 {
+            client.pause(&pause_admin);
+            let paused = client
+                .try_create_bill(
+                    &caller,
+                    &dummy,
+                    &100,
+                    &2000000000,
+                    &false,
+                    &0,
+                    &None,
+                    &dummy,
+                    &None,
+                )
+                .map(|_| ())
+                .map_err(|e| e.unwrap());
+            assert_eq!(paused, Err(BillPaymentsError::ContractPaused));
+
+            assert!(client.try_unpause(&pause_admin).is_ok());
+
+            let resumed = client
+                .try_create_bill(
+                    &caller,
+                    &dummy,
+                    &100,
+                    &2000000000,
+                    &false,
+                    &0,
+                    &None,
+                    &dummy,
+                    &None,
+                )
+                .map(|_| ())
+                .map_err(|e| e.unwrap());
+            assert_ne!(resumed, Err(BillPaymentsError::ContractPaused));
+        }
+    }
+
+    /// Boundary: unpause after pause-admin grant TTL has expired must be rejected.
+    #[test]
+    fn test_unpause_rejected_after_admin_grant_expires() {
+        let (env, client, _admin, pause_admin) = setup();
+
+        client.pause(&pause_admin);
+
+        // Advance beyond ADMIN_GRANT_TTL (30 days).
+        let ttl_seconds: u64 = 30 * 24 * 60 * 60;
+        env.ledger().with_mut(|li| {
+            li.timestamp = li.timestamp.saturating_add(ttl_seconds + 1);
+        });
+
+        let result = client.try_unpause(&pause_admin);
+        assert_eq!(result, Err(Ok(BillPaymentsError::AdminGrantExpired)));
+
+        // Contract must remain paused after the rejected attempt.
+        let caller = Address::generate(&env);
+        let dummy = String::from_str(&env, "dummy");
+        let still_paused = client
+            .try_create_bill(
+                &caller,
+                &dummy,
+                &100,
+                &2000000000,
+                &false,
+                &0,
+                &None,
+                &dummy,
+                &None,
+            )
+            .map(|_| ())
+            .map_err(|e| e.unwrap());
+        assert_eq!(still_paused, Err(BillPaymentsError::ContractPaused));
+    }
+
+    /// Failure recovery: after a rejected unpause, a valid unpause still works.
+    #[test]
+    fn test_unpause_recovers_after_rejected_attempt() {
+        let (env, client, _admin, pause_admin) = setup();
+        let attacker = Address::generate(&env);
+
+        client.pause(&pause_admin);
+
+        // Rejected attempt must not corrupt state.
+        assert!(client.try_unpause(&attacker).is_err());
+
+        // Valid unpause must still succeed.
+        assert!(client.try_unpause(&pause_admin).is_ok());
+
+        // Contract must be operable again.
+        let caller = Address::generate(&env);
+        let dummy = String::from_str(&env, "dummy");
+        let resumed = client
+            .try_create_bill(
+                &caller,
+                &dummy,
+                &100,
+                &2000000000,
+                &false,
+                &0,
+                &None,
+                &dummy,
+                &None,
+            )
+            .map(|_| ())
+            .map_err(|e| e.unwrap());
+        assert_ne!(resumed, Err(BillPaymentsError::ContractPaused));
+    }
+
+    /// Regression: unpause must not be reachable via the emergency-pause
+    /// admin path when the caller is not the configured pause admin.
+    #[test]
+    fn test_unpause_requires_pause_admin_not_general_admin() {
+        let (env, client, admin, pause_admin) = setup();
+        let other = Address::generate(&env);
+
+        client.pause(&pause_admin);
+
+        // The general admin (init_admin) is not the pause admin here.
+        let admin_attempt = client.try_unpause(&admin);
+        let other_attempt = client.try_unpause(&other);
+
+        // Both must be rejected; only the pause admin can unpause.
+        assert!(admin_attempt.is_err());
+        assert!(other_attempt.is_err());
+
+        // Pause admin can still unpause.
+        assert!(client.try_unpause(&pause_admin).is_ok());
     }
 }
