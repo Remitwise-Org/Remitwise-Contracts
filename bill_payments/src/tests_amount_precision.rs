@@ -1,7 +1,5 @@
 #![cfg(test)]
 
-extern crate std;
-
 //! Regression coverage for Issue #1737 — bill scheduling and execution:
 //! amount precision and overflow.
 //!
@@ -23,6 +21,8 @@ extern crate std;
 //! i128 digit pattern must round-trip exactly — there is no decimal
 //! arithmetic to round), and conversion boundaries (interval → frequency_days,
 //! seconds-per-day multiplication).
+
+extern crate std;
 
 use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError, BillSchedule};
 use remitwise_common::{MAX_AMOUNT, MIN_AMOUNT};

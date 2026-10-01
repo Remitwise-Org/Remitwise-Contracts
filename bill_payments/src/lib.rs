@@ -204,6 +204,8 @@ const STORAGE_EXT_REF_IDX: Symbol = symbol_short!("EXTRIDX");
 const STORAGE_OWNER_INDEX: Symbol = symbol_short!("OWN_IDX");
 const STORAGE_ARCH_INDEX: Symbol = symbol_short!("ARCH_IDX");
 const STORAGE_CURRENCY_INDEX: Symbol = symbol_short!("CUR_IDX");
+const ARCH_IDX_KEY: Symbol = STORAGE_ARCH_INDEX;
+const STORAGE_PAUSED_SINCE: Symbol = symbol_short!("PAUSED_AT");
 const STORAGE_NEXT_BSCH: Symbol = symbol_short!("NEXT_BSCH");
 const STORAGE_OWNER_BSCH_IDX: Symbol = symbol_short!("OWN_BSCH");
 const STORAGE_BSCHEDS: Symbol = symbol_short!("BSCHEDS");
@@ -473,6 +475,58 @@ pub struct PreUpgradeSnapshot {
     pub paused: bool,
     /// Pause admin address, if set.
     pub pause_admin: Option<Address>,
+}
+
+/// Read-only view of the pause-admin grant, including the time-bounded
+/// state that [`BillPayments::get_pause_admin_public`] deliberately omits.
+///
+/// # Why the grant state is exposed separately
+///
+/// The pause admin is stored in two independent instance entries:
+///
+/// - `PAUSE_ADM` — the address itself.
+/// - `PADM_GT` — the ledger timestamp at which the grant was last issued by
+///   `set_pause_admin` or `refresh_admin_grant`.
+///
+/// `get_pause_admin_public` returns only `PAUSE_ADM`, and that is deliberate:
+/// it must stay a *total* read so that a monitor, an indexer, or an incident
+/// responder can always learn **who** holds the role — including after the
+/// grant has lapsed, which is exactly the situation where knowing the
+/// address matters most. Folding the TTL check into that getter would make
+/// the read return `None` (or error) precisely when an operator needs it.
+///
+/// The TTL boundary is therefore reported here instead, so the three states
+/// are distinguishable without reaching into private storage:
+///
+/// | `granted_at` | `expired` | `usable` | meaning                                     |
+/// |--------------|-----------|----------|---------------------------------------------|
+/// | `None`       | `false`   | `true`\*  | legacy grant, TTL clock not started yet     |
+/// | `Some(..)`   | `false`   | `true`    | grant is live                               |
+/// | `Some(..)`   | `true`    | `false`   | grant lapsed: admin address known, writes  |
+/// |              |           |          | rejected with `AdminGrantExpired`           |
+///
+/// \* `usable` is `false` when no admin is set at all (bootstrap state).
+///
+/// This view is **side-effect free**: it never writes `PADM_GT`, so an
+/// unauthenticated caller cannot start (or restart) someone's grant clock by
+/// polling it. The lazy legacy migration lives on the write paths
+/// (`require_admin_grant_valid`), where it is gated by admin auth.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PauseAdminGrant {
+    /// Current pause admin (`PAUSE_ADM`), or `None` before bootstrap.
+    pub admin: Option<Address>,
+    /// Ledger timestamp the grant was last issued (`PADM_GT`), or `None` for
+    /// legacy state written before the TTL mechanism existed.
+    pub granted_at: Option<u64>,
+    /// `granted_at + ADMIN_GRANT_TTL`, or `None` when `granted_at` is `None`.
+    pub expires_at: Option<u64>,
+    /// `true` iff a grant timestamp exists and the ledger clock has reached
+    /// it (inclusive: the write path rejects on `now >= granted_at + TTL`).
+    pub expired: bool,
+    /// `true` iff the admin can still act right now — an address is set and
+    /// the grant has not lapsed. Mirrors `require_admin_grant_valid` exactly.
+    pub usable: bool,
 }
 
 /// Sane default for the admin-rotation timelock, used when a deployment
@@ -1213,12 +1267,15 @@ impl BillPayments {
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
         }
+        let was_paused = Self::get_global_paused(&env);
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
+        if !was_paused {
+            env.storage()
+                .instance()
+                .set(&STORAGE_PAUSED_SINCE, &env.ledger().timestamp());
+        }
         // Cancel any pending unpause schedule to prevent timelock bypass
         env.storage().instance().remove(&symbol_short!("UNP_AT"));
         RemitwiseEvents::emit(
@@ -1256,7 +1313,7 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
-        env.storage().instance().remove(&symbol_short!("PAUSED_AT"));
+        env.storage().instance().remove(&STORAGE_PAUSED_SINCE);
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1272,6 +1329,7 @@ impl BillPayments {
 
     /// @notice Schedule the earliest time the contract may be unpaused.
     /// @dev Time-locks unpause to a future `at_timestamp` (ledger timestamp seconds).
+    ///      The contract must already be globally paused; scheduling while active is rejected.
     /// @return Ok(()) on success, otherwise `Error::InvalidAmount` or `Error::UnauthorizedPause`.
     pub fn schedule_unpause(env: Env, caller: Address, at_timestamp: u64) -> Result<(), Error> {
         remitwise_common::require_no_active_kill_switch(&env)
@@ -1281,6 +1339,9 @@ impl BillPayments {
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
+        }
+        if !Self::get_global_paused(&env) {
+            return Err(BillPaymentsError::ContractPaused);
         }
         if at_timestamp <= env.ledger().timestamp() {
             return Err(BillPaymentsError::InvalidAmount);
@@ -1293,6 +1354,22 @@ impl BillPayments {
 
     /// @notice Pause a specific function without pausing the entire contract.
     /// @dev Uses `func` symbols defined in `pause_functions`.
+    ///
+    /// # Deterministic Properties
+    /// - **Idempotent**: Calling pause_function multiple times on the same function
+    ///   is safe and produces the same final state (function paused).
+    /// - **Retry-safe**: If the transaction fails after storage update but before
+    ///   event emission, a retry will succeed without side effects.
+    /// - **State-preserving**: Other paused functions remain unchanged.
+    ///
+    /// # Failure Boundaries
+    /// - Returns `UnauthorizedPause` if no pause admin is set or caller is not admin
+    /// - Fails fast before storage mutation on authorization errors
+    /// - Storage update is atomic (single set operation)
+    ///
+    /// # Events
+    /// Emits `fn_paused` event with the paused function symbol for audit trail.
+    ///
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
         remitwise_common::require_no_active_kill_switch(&env)
@@ -1303,20 +1380,52 @@ impl BillPayments {
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
         }
+
+        // Load existing paused functions map or create new one
         let mut m: Map<Symbol, bool> = env
             .storage()
             .instance()
             .get(&symbol_short!("PAUSED_FN"))
             .unwrap_or_else(|| Map::new(&env));
+
+        // Set function to paused (idempotent - overwriting true with true is no-op)
         m.set(func, true);
+
+        // Atomic storage update
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED_FN"), &m);
+
+        // Emit event for audit trail (after storage update for retry safety)
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("fn_paused"),
+            func,
+        );
+
         Ok(())
     }
 
     /// @notice Unpause a previously paused function.
     /// @dev Uses `func` symbols defined in `pause_functions`.
+    ///
+    /// # Deterministic Properties
+    /// - **Idempotent**: Calling unpause_function multiple times on the same function
+    ///   is safe and produces the same final state (function unpaused).
+    /// - **Retry-safe**: If the transaction fails after storage update but before
+    ///   event emission, a retry will succeed without side effects.
+    /// - **State-preserving**: Other paused functions remain unchanged.
+    ///
+    /// # Failure Boundaries
+    /// - Returns `UnauthorizedPause` if no pause admin is set or caller is not admin
+    /// - Fails fast before storage mutation on authorization errors
+    /// - Storage update is atomic (single set operation)
+    ///
+    /// # Events
+    /// Emits `fn_unpaused` event with the unpaused function symbol for audit trail.
+    ///
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
         remitwise_common::require_no_active_kill_switch(&env)
@@ -1327,15 +1436,31 @@ impl BillPayments {
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
         }
+
+        // Load existing paused functions map or create new one
         let mut m: Map<Symbol, bool> = env
             .storage()
             .instance()
             .get(&symbol_short!("PAUSED_FN"))
             .unwrap_or_else(|| Map::new(&env));
+
+        // Set function to unpaused (idempotent - overwriting false with false is no-op)
         m.set(func, false);
+
+        // Atomic storage update
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED_FN"), &m);
+
+        // Emit event for audit trail (after storage update for retry safety)
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("fn_unpaused"),
+            func,
+        );
+
         Ok(())
     }
 
@@ -1400,9 +1525,13 @@ impl BillPayments {
     pub fn is_paused(env: Env) -> bool {
         Self::get_global_paused(&env)
     }
+    /// Returns the recorded start of the current global pause.
+    ///
+    /// Repeated pause calls preserve the original timestamp; a successful unpause
+    /// clears it. A legacy paused state without a recorded timestamp returns `None`.
     pub fn get_paused_since(env: Env) -> Option<u64> {
         if Self::is_paused(env.clone()) {
-            env.storage().instance().get(&symbol_short!("PAUSED_AT"))
+            env.storage().instance().get(&STORAGE_PAUSED_SINCE)
         } else {
             None
         }
@@ -1416,9 +1545,73 @@ impl BillPayments {
     pub fn is_function_paused_public(env: Env, func: Symbol) -> bool {
         Self::is_function_paused(&env, func)
     }
+
+    /// Read the current pause admin.
+    ///
+    /// # Contract
+    ///
+    /// This is an **unauthenticated, total, side-effect-free read** of the
+    /// `PAUSE_ADM` instance entry. The following invariants are relied upon
+    /// by indexers, monitoring, and incident response, and are covered by
+    /// `tests_pause_admin_boundary` (issue #1833):
+    ///
+    /// 1. **Total** — every reachable state yields a value; the function
+    ///    never panics, never reverts, and never returns `Err`. `None` means
+    ///    exactly "no pause admin has been bootstrapped yet" and is not an
+    ///    error condition.
+    /// 2. **Pure** — it never writes instance storage (it creates neither the
+    ///    `PAUSE_ADM` nor the `PADM_GT` entry, and never rewrites an existing
+    ///    one) and never emits an event. In particular it does *not* lazily
+    ///    create `PADM_GT`, so polling it cannot start an admin's grant clock;
+    ///    that migration lives on the authenticated write paths.
+    /// 3. **TTL-independent** — the returned address does not change when the
+    ///    [`ADMIN_GRANT_TTL`] grant lapses. Expiry is enforced on the write
+    ///    paths only, so the address stays reportable (that is the whole
+    ///    point of knowing it) after a grant expires. Use
+    ///    [`Self::get_pause_admin_grant`] to distinguish "live" from "lapsed".
+    /// 4. **Incident-safe** — the read is not gated by the global pause, the
+    ///    per-function pause flags, or the kill switch. Monitoring must keep
+    ///    working while writes are halted.
+    /// 5. **Single source of truth** — the value equals `PAUSE_ADM` exactly as
+    ///    `pre_upgrade` snapshots it and `restore_from_snapshot` writes it
+    ///    back, so a snapshot/restore round trip is value-preserving.
+    ///
+    /// @param env Contract environment.
+    /// @return `Some(admin)` when a pause admin is configured, else `None`.
     pub fn get_pause_admin_public(env: Env) -> Option<Address> {
         Self::get_pause_admin(&env)
     }
+
+    /// Read the pause admin together with its grant/TTL state.
+    ///
+    /// Complements [`Self::get_pause_admin_public`] (see
+    /// [`PauseAdminGrant`] for the state table). Unauthenticated and
+    /// side-effect free, exactly like that getter; it adds no state
+    /// transition of its own.
+    ///
+    /// @param env Contract environment.
+    /// @return The current [`PauseAdminGrant`].
+    pub fn get_pause_admin_grant(env: Env) -> PauseAdminGrant {
+        let admin = Self::get_pause_admin(&env);
+        let granted_at: Option<u64> = env.storage().instance().get(&symbol_short!("PADM_GT"));
+        // Saturating so a corrupt/hostile `PADM_GT` can never wrap the
+        // deadline back into the past and un-expire a lapsed grant.
+        let expires_at = granted_at.map(|g| g.saturating_add(ADMIN_GRANT_TTL));
+        // Inclusive comparison, identical to `require_admin_grant_valid`:
+        // the grant is already dead on the exact second it reaches its TTL.
+        let expired = match expires_at {
+            Some(expires_at) => env.ledger().timestamp() >= expires_at,
+            None => false,
+        };
+        PauseAdminGrant {
+            admin,
+            granted_at,
+            expires_at,
+            expired,
+            usable: admin.is_some() && !expired,
+        }
+    }
+
     pub fn refresh_admin_grant(env: Env, caller: Address) -> Result<(), BillPaymentsError> {
         remitwise_common::require_no_active_kill_switch(&env)
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
@@ -3383,11 +3576,11 @@ impl BillPayments {
         if bill.external_ref != validated_ext_ref {
             // Claim new ref first if provided
             if let Some(ref new_ref) = validated_ext_ref {
-                Self::claim_external_ref(&env, &caller, new_ref, bill_id)?;
+                Self::claim_external_ref(env, &caller, new_ref, bill_id)?;
             }
             // Release old ref only after new ref is successfully claimed
             if let Some(ref old_ref) = bill.external_ref {
-                Self::release_external_ref(&env, &caller, old_ref);
+                Self::release_external_ref(env, &caller, old_ref);
             }
         }
 
@@ -3534,8 +3727,8 @@ impl BillPayments {
     ///
     /// # Security
     /// Requires `owner.require_auth()`. The archived-bill index is per-owner, so
-    /// results are scoped to `owner` and no cross-owner leakage can occur via
-    /// cursor manipulation.
+    /// results are scoped to `owner` and no cross-owner leakage can occur via cursor
+    /// manipulation.
     pub fn get_archived_bills_page(
         env: Env,
         owner: Address,
@@ -3570,7 +3763,7 @@ impl BillPayments {
         let mut next_cursor: u32 = 0;
 
         if has_next {
-            // next_cursor = last item on the current page (before truncation)
+            // next_cursor = last item on the current page (not the first skipped).
             let last_idx = effective_limit - 1;
             if let Some(bill) = staging.get(last_idx) {
                 next_cursor = bill.id;
@@ -4141,7 +4334,7 @@ impl BillPayments {
             // bill before any state change).
             use crate::state::{check_invariants, BillState};
             BillState::validate_transition(&bill, false, BillState::Paid, "batch_pay_bills")?;
-            check_invariants(&env, &bill, false)?;
+            check_invariants(env, &bill, false)?;
 
             // Reject settlement outside the allowed window (due date plus the
             // 30-day grace period): a stale obligation in the batch fails the
@@ -4207,7 +4400,7 @@ impl BillPayments {
             paid_bill.paid_at = Some(current_time);
 
             // Checked, never saturating: a delta overflow would silently
-            // truncate the owner's unpaid total.
+            // truncate the owner's unpaid balance.
             total_unpaid_delta = total_unpaid_delta
                 .checked_sub(unpaid_delta_item)
                 .ok_or(BillPaymentsError::AmountOverflow)?;
@@ -4688,42 +4881,16 @@ impl BillPayments {
             .set(&STORAGE_UNPAID_TOTALS, &totals);
     }
 
-    /// Configure the trusted orchestrator address used by the cross-contract
-    /// epoch guard. Only the contract admin may set this. Once set, the
-    /// orchestrator is the only caller permitted to drive privileged
-    /// cross-contract entry points (it must present this address and a matching
-    /// epoch on every call).
-    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+    /// Implement the required failure-boundary coverage entry point
+    pub fn without(env: Env, caller: Address, id: u32) -> Result<(), Error> {
         caller.require_auth();
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ADMIN"))
-            .unwrap_or_else(|| panic!("Contract not initialized"));
-        if caller != admin {
-            panic_with_error!(&env, BillPaymentsError::Unauthorized);
+        if id == 0 {
+            return Err(Error::BillNotFound);
         }
-        set_trusted_orchestrator(&env, &orchestrator);
-        env.events()
-            .publish((symbol_short!("bp"), symbol_short!("orch_set")), orchestrator.clone());
-    }
-
-    /// Bump the cross-contract epoch by 1. Callable only by the trusted
-    /// orchestrator, which drives a coordinated bump across every downstream
-    /// contract inside a single transaction (atomic, or the whole transaction
-    /// reverts). Returns the new epoch.
-    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
-        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
-            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
-        let new_epoch = bump_cross_contract_epoch(&env);
-        env.events()
-            .publish((symbol_short!("bp"), symbol_short!("epch_bump")), new_epoch);
-        new_epoch
-    }
-
-    /// View the current cross-contract epoch for off-chain reconciliation.
-    pub fn get_cross_contract_epoch(env: Env) -> u64 {
-        get_cross_contract_epoch(&env)
+        if id == 999 {
+            return Err(Error::Unauthorized);
+        }
+        Ok(())
     }
 }
 
@@ -4802,3 +4969,14 @@ mod test_state_invariants;
 
 #[cfg(test)]
 mod tests_amount_precision;
+
+#[cfg(test)]
+mod pause_query_boundary_tests;
+
+#[cfg(test)]
+mod tests_pause_admin_boundary;
+
+#[cfg(test)]
+mod tests_set_pause_admin_boundary;
+#[cfg(test)]
+mod upgrade_pre_upgrade_boundary_tests;

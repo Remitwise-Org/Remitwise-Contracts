@@ -15,6 +15,7 @@ A comprehensive test suite for `configure_multisig` threshold mutations on in-fl
 - **Coverage**: 95%+ of threshold change execution paths
 
 ### 2. Test Functions (12 Total)
+..
 
 | # | Function | Type | Purpose |
 |---|----------|------|---------|
