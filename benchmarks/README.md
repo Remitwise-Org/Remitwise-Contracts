@@ -246,3 +246,31 @@ Update `thresholds.json` with appropriate values based on operation characterist
 
 ### Orchestrator and Migration
 New benchmark harnesses added for `execute_remittance_flow` and `data_migration` import/export paths to detect cost regressions.
+
+### `bench_data_migration_import_paths` Failure Boundaries
+
+`benchmarks/src/orchestrator_migration_benches.rs` includes deterministic
+failure-boundary coverage for `bench_data_migration_import_paths`. The
+benchmark exercises the import path across the following states so that
+regressions in load, error, retry, stale, and permission handling are
+detected before merge:
+
+- **Success**: valid, well-formed import payloads complete deterministically.
+- **Invalid input**: malformed or schema-violating payloads are rejected with
+  a stable error and no partial state mutation.
+- **Duplicate**: re-importing the same payload is idempotent and does not
+  duplicate records or corrupt existing state.
+- **Boundary**: empty payloads, maximum-size payloads, and off-by-one
+  boundaries are covered explicitly.
+- **Retry**: a failed import can be retried without leaving stale or
+  half-applied state behind.
+- **Stale**: imports referencing outdated versions are detected and rejected
+  deterministically rather than silently overwriting newer data.
+- **Permission**: unauthorized callers are rejected before any state
+  transition, preserving authorization invariants.
+
+Each scenario asserts that authorization, validation, and state-transition
+invariants hold, and that failures are observable through stable error
+output without exposing sensitive data. Benchmarks remain deterministic
+(`RUST_TEST_THREADS=1`) so retries and concurrent execution cannot produce
+an unsafe or inconsistent result.
