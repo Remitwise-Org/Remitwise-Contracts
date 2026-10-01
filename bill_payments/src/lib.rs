@@ -204,6 +204,8 @@ const STORAGE_EXT_REF_IDX: Symbol = symbol_short!("EXTRIDX");
 const STORAGE_OWNER_INDEX: Symbol = symbol_short!("OWN_IDX");
 const STORAGE_ARCH_INDEX: Symbol = symbol_short!("ARCH_IDX");
 const STORAGE_CURRENCY_INDEX: Symbol = symbol_short!("CUR_IDX");
+const ARCH_IDX_KEY: Symbol = STORAGE_ARCH_INDEX;
+const STORAGE_PAUSED_SINCE: Symbol = symbol_short!("PAUSED_AT");
 const STORAGE_NEXT_BSCH: Symbol = symbol_short!("NEXT_BSCH");
 const STORAGE_OWNER_BSCH_IDX: Symbol = symbol_short!("OWN_BSCH");
 const STORAGE_BSCHEDS: Symbol = symbol_short!("BSCHEDS");
@@ -1265,12 +1267,15 @@ impl BillPayments {
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
         }
+        let was_paused = Self::get_global_paused(&env);
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
+        if !was_paused {
+            env.storage()
+                .instance()
+                .set(&STORAGE_PAUSED_SINCE, &env.ledger().timestamp());
+        }
         // Cancel any pending unpause schedule to prevent timelock bypass
         env.storage().instance().remove(&symbol_short!("UNP_AT"));
         RemitwiseEvents::emit(
@@ -1308,7 +1313,7 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
-        env.storage().instance().remove(&symbol_short!("PAUSED_AT"));
+        env.storage().instance().remove(&STORAGE_PAUSED_SINCE);
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1520,9 +1525,13 @@ impl BillPayments {
     pub fn is_paused(env: Env) -> bool {
         Self::get_global_paused(&env)
     }
+    /// Returns the recorded start of the current global pause.
+    ///
+    /// Repeated pause calls preserve the original timestamp; a successful unpause
+    /// clears it. A legacy paused state without a recorded timestamp returns `None`.
     pub fn get_paused_since(env: Env) -> Option<u64> {
         if Self::is_paused(env.clone()) {
-            env.storage().instance().get(&symbol_short!("PAUSED_AT"))
+            env.storage().instance().get(&STORAGE_PAUSED_SINCE)
         } else {
             None
         }

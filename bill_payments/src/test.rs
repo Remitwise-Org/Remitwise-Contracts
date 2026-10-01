@@ -2,8 +2,8 @@
 mod testsuit {
     extern crate std;
 
-    use crate::*;
     use crate::pause_functions;
+    use crate::*;
     use proptest::prelude::*;
     use remitwise_common;
     use soroban_sdk::testutils::storage::Instance as _;
@@ -1033,7 +1033,7 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        
+
         env.mock_all_auths();
         let result = client.try_without(&owner, &1);
         assert_eq!(result, Ok(Ok(())));
@@ -1045,7 +1045,7 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        
+
         env.mock_all_auths();
         let result = client.try_without(&owner, &0);
         assert_eq!(result, Err(Ok(Error::BillNotFound)));
@@ -1057,7 +1057,7 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        
+
         env.mock_all_auths();
         let result = client.try_without(&owner, &999);
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
@@ -6093,6 +6093,53 @@ mod testsuit {
     }
 
     #[test]
+    fn test_paused_since_tracks_successful_global_pause_lifecycle() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+        env.ledger().set_timestamp(0);
+
+        assert_eq!(client.get_paused_since(), None);
+        client.pause(&admin);
+        assert_eq!(client.get_paused_since(), Some(0));
+
+        env.ledger().set_timestamp(2000);
+        client.pause(&admin);
+        assert_eq!(client.get_paused_since(), Some(0));
+
+        client.schedule_unpause(&admin, &3000);
+        env.ledger().set_timestamp(2999);
+        assert_eq!(client.try_unpause(&admin), Err(Ok(Error::ContractPaused)));
+        assert!(client.is_paused());
+        assert_eq!(client.get_paused_since(), Some(0));
+
+        env.ledger().set_timestamp(3000);
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+        assert_eq!(client.get_paused_since(), None);
+    }
+
+    #[test]
+    fn test_unauthorized_pause_does_not_set_paused_since() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let other = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        assert_eq!(client.try_pause(&other), Err(Ok(Error::UnauthorizedPause)));
+        assert!(!client.is_paused());
+        assert_eq!(client.get_paused_since(), None);
+    }
+
+    #[test]
     fn test_schedule_unpause_replaces_existing_pending_schedule() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
@@ -6186,8 +6233,8 @@ mod testsuit {
         assert!(client.get_bill(&888).is_none());
     }
 
-    /// Verify batch_pay_bills is fully atomic: if one recurring bill
-    /// computation overflows, the entire batch reverts with no changes.
+    /// Verify batch_pay_bills is fully atomic when recurring child creation
+    /// fails after earlier bills have been staged.
     #[test]
     fn test_batch_pay_bills_atomic_rollback_on_overflow() {
         let env = Env::default();
@@ -6196,9 +6243,43 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
 
-        client.set_upgrade_admin(&admin, &admin);
-        let result = client.try_pre_upgrade(&stranger);
-        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+        let id1 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Safe"),
+            &100,
+            &1_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Recurring"),
+            &200,
+            &1_000_000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .set(&soroban_sdk::symbol_short!("NEXT_ID"), &u32::MAX);
+        });
+
+        let bill_ids = soroban_sdk::vec![&env, id1, id2];
+        let result = client.try_batch_pay_bills(&owner, &bill_ids);
+        assert_eq!(result, Err(Ok(Error::IdSpaceExhausted)));
+
+        assert!(!client.get_bill(&id1).unwrap().paid);
+        assert!(!client.get_bill(&id2).unwrap().paid);
+        assert_eq!(client.get_total_unpaid(&owner), 300);
+        assert!(client.get_bill(&u32::MAX).is_none());
     }
 
     // -----------------------------------------------------------------------
@@ -6617,7 +6698,11 @@ mod testsuit {
 
         env.mock_all_auths();
         let result_at = client.try_pause_function(&admin, &pause_functions::PAY_BILL);
-        assert_eq!(result_at, Err(Ok(Error::AdminGrantExpired)), "Should fail at exact expiry");
+        assert_eq!(
+            result_at,
+            Err(Ok(Error::AdminGrantExpired)),
+            "Should fail at exact expiry"
+        );
 
         // Test just after expiry
         let just_after_expiry = initial_time + 2_592_001; // 30 days + 1 second
@@ -6625,7 +6710,11 @@ mod testsuit {
 
         env.mock_all_auths();
         let result_after = client.try_pause_function(&admin, &pause_functions::CANCEL_BILL);
-        assert_eq!(result_after, Err(Ok(Error::AdminGrantExpired)), "Should fail just after expiry");
+        assert_eq!(
+            result_after,
+            Err(Ok(Error::AdminGrantExpired)),
+            "Should fail just after expiry"
+        );
     }
 
     #[test]
@@ -6658,7 +6747,11 @@ mod testsuit {
             .instance()
             .get(&soroban_sdk::symbol_short!("PAUSED_FN"))
             .unwrap();
-        assert_eq!(paused_map.len(), 1, "Should have exactly one paused function");
+        assert_eq!(
+            paused_map.len(),
+            1,
+            "Should have exactly one paused function"
+        );
     }
 
     #[test]
@@ -6682,7 +6775,10 @@ mod testsuit {
             .storage()
             .instance()
             .get(&soroban_sdk::symbol_short!("PADM_GT"));
-        assert!(grant_timestamp.is_none(), "Grant timestamp should be absent in legacy state");
+        assert!(
+            grant_timestamp.is_none(),
+            "Grant timestamp should be absent in legacy state"
+        );
 
         // Pause function should succeed and migrate the grant timestamp
         env.mock_all_auths();
@@ -6694,7 +6790,10 @@ mod testsuit {
             .storage()
             .instance()
             .get(&soroban_sdk::symbol_short!("PADM_GT"));
-        assert!(grant_timestamp_after.is_some(), "Grant timestamp should be set after migration");
+        assert!(
+            grant_timestamp_after.is_some(),
+            "Grant timestamp should be set after migration"
+        );
 
         // Function should be paused
         assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
@@ -6940,7 +7039,11 @@ mod testsuit {
 
         // --- Overwrite version to simulate a (failed) upgrade ---
         client.set_version(&admin, &999u32);
-        assert_eq!(client.get_version(), 999u32, "precondition: version was overwritten");
+        assert_eq!(
+            client.get_version(),
+            999u32,
+            "precondition: version was overwritten"
+        );
 
         // --- Snapshot & restore ---
         client.pre_upgrade(&admin);
@@ -7032,7 +7135,10 @@ mod testsuit {
 
         // Unpause to simulate a (partial) upgrade that reversed pause state.
         client.unpause(&pause_admin);
-        assert!(!client.is_paused(), "precondition: contract must be unpaused after unpause");
+        assert!(
+            !client.is_paused(),
+            "precondition: contract must be unpaused after unpause"
+        );
 
         // Restore should re-apply the paused=true state from the snapshot.
         client.restore_from_snapshot(&admin);
