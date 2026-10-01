@@ -102,18 +102,6 @@ pub struct BillSchedule {
 /// Paginated result for bill queries
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BillSchedule {
-    pub id: u32,
-    pub owner: Address,
-    pub bill_id: u32,
-    pub next_due: u64,
-    pub interval: u64,
-    pub active: bool,
-    pub missed_count: u32,
-}
-
-#[contracttype]
 #[derive(Clone)]
 pub struct BillPage {
     /// The bills for this page
@@ -2057,6 +2045,17 @@ impl BillPayments {
         Self::modify_bill_schedule_core(&env, caller, schedule_id, amount, next_due, interval)
     }
 
+    /// Core implementation of modify_bill_schedule, shared by the keyed and
+    /// unkeyed entry points. Validates amounts, dates, and intervals before
+    /// updating the schedule.
+    fn modify_bill_schedule_core(
+        env: &Env,
+        caller: Address,
+        schedule_id: u32,
+        amount: i128,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<bool, BillPaymentsError> {
         // Shared exact-integer amount rules (sign + magnitude), before any
         // state change. The previous `amount <= 0` guard did not bound the
         // magnitude; an oversized amount could threaten per-owner totals.
@@ -2128,15 +2127,23 @@ impl BillPayments {
         Self::cancel_bill_schedule_core(&env, caller, schedule_id)
     }
 
+    /// Core implementation of cancel_bill_schedule, shared by the keyed and
+    /// unkeyed entry points. Enforces rate limiting, ownership, and active-state
+    /// checks before marking the schedule inactive.
+    fn cancel_bill_schedule_core(
+        env: &Env,
+        caller: Address,
+        schedule_id: u32,
+    ) -> Result<bool, BillPaymentsError> {
         check_and_increment_rate_limit(
-            &env,
+            env,
             &caller,
             pause_functions::CANCEL_BILL_SCHEDULE,
             CANCEL_SCHEDULE_RATE_LIMIT,
         )
-        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+        .map_err(|_| BillPaymentsError::RateLimitExceeded)?;
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_instance_ttl(env);
 
         let mut schedules: Map<u32, BillSchedule> = env
             .storage()
@@ -2388,13 +2395,12 @@ impl BillPayments {
                     Self::index_add_currency(env, &schedule.owner, &schedule.currency, next_id);
                     Self::adjust_unpaid_total(env, &schedule.owner, schedule.amount);
 
-                        env.events().publish(
-                            (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                            (next_id, schedule_id, schedule.next_due),
-                        );
+                    env.events().publish(
+                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                        (next_id, schedule_id, schedule.next_due),
+                    );
 
-                        bills_created_this_call = bills_created_this_call.saturating_add(1);
-                    }
+                    bills_created_this_call = bills_created_this_call.saturating_add(1);
                 }
             } else {
                 schedule.active = false;

@@ -11,6 +11,7 @@ pub const MAX_NAME_LEN: u32 = 64;
 pub const CREATE_BILL_RATE_LIMIT: u32 = 100; // per address per 24h
 pub const PAY_BILL_RATE_LIMIT: u32 = 200; // per address per 24h
 pub const CANCEL_BILL_RATE_LIMIT: u32 = 50; // per address per 24h
+pub const CANCEL_SCHEDULE_RATE_LIMIT: u32 = 50; // per address per 24h
 pub const MIN_EXTERNAL_REF_LEN: u32 = 1;
 pub const MAX_EXTERNAL_REF_LEN: u32 = 64;
 pub const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
