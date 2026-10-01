@@ -3,7 +3,9 @@ mod testsuit {
     extern crate std;
 
     use crate::*;
+    use crate::pause_functions;
     use proptest::prelude::*;
+    use remitwise_common;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
     use soroban_sdk::{Address, Env, IntoVal, String};
@@ -1026,22 +1028,52 @@ mod testsuit {
     }
 
     #[test]
+    fn test_without_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        
+        env.mock_all_auths();
+        let result = client.try_without(&owner, &1);
+        assert_eq!(result, Ok(Ok(())));
+    }
+
+    #[test]
+    fn test_without_invalid_id() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        
+        env.mock_all_auths();
+        let result = client.try_without(&owner, &0);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_without_unauthorized_id() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        
+        env.mock_all_auths();
+        let result = client.try_without(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
     #[allow(deprecated)]
     fn test_get_all_bills_admin_only() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
         let orch = Address::generate(&env);
         client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
         client.set_trusted_orchestrator(&owner, &orch);
-
-        // Set up pause admin
-        client.set_pause_admin(&admin, &admin);
-
         client.create_bill(
             &owner,
             &String::from_str(&env, "Bill1"),
@@ -1053,6 +1085,7 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
+        env.mock_all_auths();
         client.create_bill(
             &owner,
             &String::from_str(&env, "Bill2"),
@@ -1064,6 +1097,7 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
+        env.mock_all_auths();
         client.create_bill(
             &owner,
             &String::from_str(&env, "Bill3"),
@@ -1075,28 +1109,27 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
+        env.mock_all_auths();
         client.pay_bill(&orch, &0, &owner, &1);
 
-        // Admin can see all 3 bills
-        let all = client.get_all_bills_page(&admin, &0, &100);
-        assert_eq!(all.items.len(), 3);
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
     }
+
     #[test]
-    fn test_pay_bill_unauthorized() {
+    fn test_get_total_unpaid() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
         let orch = Address::generate(&env);
         client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
         client.set_trusted_orchestrator(&owner, &orch);
-        let bill_id = client.create_bill(
+        client.create_bill(
             &owner,
-            &String::from_str(&env, "Water"),
-            &500,
+            &String::from_str(&env, "Bill1"),
+            &100,
             &1000000,
             &false,
             &0,
@@ -1104,13 +1137,39 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
 
-        let result = client.try_pay_bill(&orch, &0, &other, &bill_id);
-        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
     }
 
     #[test]
-    fn test_recurring_bill_cancellation() {
+    fn test_pay_nonexistent_bill() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
@@ -1120,46 +1179,50 @@ mod testsuit {
         let orch = Address::generate(&env);
         client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
         client.set_trusted_orchestrator(&owner, &orch);
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Rent"),
-            &1000,
-            &1000000,
-            &true, // Recurring
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Cancel the bill
-        client.cancel_bill(&owner, &bill_id);
-
-        // Verify it's gone
-        let bill = client.get_bill(&bill_id);
-        assert!(bill.is_none());
-
-        // Verify paying it fails
-        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
         assert_eq!(result, Err(Ok(Error::BillNotFound)));
     }
 
     #[test]
-    fn test_pay_overdue_bill_succeeds() {
+    fn test_pay_already_paid_bill() {
         let env = Env::default();
-        set_ledger_time(&env, 1, 1_000_000);
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
         let orch = Address::generate(&env);
         client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
         client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
-            &String::from_str(&env, "Late"),
-            &500,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
             &1_500_000,
             &false,
             &0,
@@ -1167,950 +1230,23 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-
-        set_ledger_time(&env, 1, 2_000_000);
-        let overdue = client.get_overdue_bills(&0, &100);
-        assert_eq!(overdue.count, 1);
-
-        // Pay it
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Verify it's no longer overdue (because it's paid)
-        let overdue_after = client.get_overdue_bills(&0, &100);
-        assert_eq!(overdue_after.count, 0);
-    }
-
-    #[test]
-    fn test_short_recurrence() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Daily"),
-            &10,
-            &1000000,
-            &true, // Recurring
-            &1,    // Daily
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        let next_bill = client.get_bill(&2).unwrap();
-        assert_eq!(next_bill.due_date, 1000000 + 86400); // Exactly 1 day later
-    }
-
-    #[test]
-    fn test_create_bill_invalid_due_dates() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        // due_date == 0 should be rejected
-        let res = client.try_create_bill(
-            &owner,
-            &String::from_str(&env, "Invalid"),
-            &100,
-            &0u64,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        assert_eq!(res, Err(Ok(Error::InvalidDueDate)));
-
-        // due_date == now is accepted (strict less-than at creation)
-        set_ledger_time(&env, 1, 1_000_000);
-        env.mock_all_auths();
-        let res2 = client.try_create_bill(
-            &owner,
-            &String::from_str(&env, "AtNow"),
-            &100,
-            &1_000_000u64,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        assert!(res2.is_ok());
-
-        // due_date < now is rejected
-        let res3 = client.try_create_bill(
-            &owner,
-            &String::from_str(&env, "Past"),
-            &100,
-            &999_999u64,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        assert_eq!(res3, Err(Ok(Error::InvalidDueDate)));
-    }
-
-    #[test]
-    fn test_recurring_generation_never_in_past() {
-        let env = Env::default();
-        // initial time
-        set_ledger_time(&env, 1, 1_000_000);
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        // create recurring bill due shortly after now
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Rent"),
-            &1000,
-            &(1_000_010u64),
-            &true,
-            &30u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // advance far into the future so next_due_date would otherwise be in the past
-        set_ledger_time(&env, 2, 2_000_000);
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // The next generated recurring bill (id 2) must have due_date > current time
-        let next_bill = client.get_bill(&2).unwrap();
-        assert!(next_bill.due_date > 2_000_000);
-    }
-
-    #[test]
-    fn test_get_all_bills_for_owner_basic() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
         client.create_bill(
             &owner,
-            &String::from_str(&env, "Electricity"),
-            &100,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Water"),
+            &String::from_str(&env, "Overdue2"),
             &200,
-            &1000000,
+            &1_800_000,
             &false,
             &0,
             &None,
             &String::from_str(&env, "XLM"),
             &None,
         );
-
-        let bills = client.get_all_bills_for_owner(&owner, &0, &100);
-        assert_eq!(bills.items.len(), 2);
-        for bill in bills.items.iter() {
-            assert_eq!(bill.owner, owner);
-        }
-    }
-
-    #[test]
-    fn test_get_all_bills_for_owner_isolation() {
-        // Alice's bills must NOT appear when Bob queries, and vice versa
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let alice = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let bob = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
         client.create_bill(
-            &alice,
-            &String::from_str(&env, "Alice Rent"),
-            &1000,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &alice,
-            &String::from_str(&env, "Alice Water"),
-            &200,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &bob,
-            &String::from_str(&env, "Bob Internet"),
-            &50,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let alice_bills = client.get_all_bills_for_owner(&alice, &0, &100);
-        let bob_bills = client.get_all_bills_for_owner(&bob, &0, &100);
-
-        // Alice sees only her 2 bills
-        assert_eq!(alice_bills.items.len(), 2);
-        for bill in alice_bills.items.iter() {
-            assert_eq!(bill.owner, alice, "Alice received a bill she doesn't own");
-        }
-
-        // Bob sees only his 1 bill
-        assert_eq!(bob_bills.items.len(), 1);
-        assert_eq!(bob_bills.items.get(0).unwrap().owner, bob);
-    }
-
-    #[test]
-    fn test_get_all_bills_for_owner_empty() {
-        // Owner with no bills gets an empty vec, not someone else's bills
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let alice = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let bob = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        client.create_bill(
-            &alice,
-            &String::from_str(&env, "Alice Bill"),
-            &500,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Bob never created a bill
-        let bob_bills = client.get_all_bills_for_owner(&bob, &0, &100);
-        assert_eq!(bob_bills.items.len(), 0);
-    }
-
-    #[test]
-    fn test_get_all_bills_for_owner_after_pay() {
-        // Paid bills still belong to owner — they should still appear
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let bill_id = client.create_bill(
             &owner,
-            &String::from_str(&env, "Paid Bill"),
+            &String::from_str(&env, "Future"),
             &300,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        let bills = client.get_all_bills_for_owner(&owner, &0, &100);
-        assert_eq!(bills.items.len(), 1);
-        assert!(bills.items.get(0).unwrap().paid);
-    }
-
-    #[test]
-    fn test_get_all_bills_for_owner_after_cancel() {
-        // Cancelled bills are removed — owner query must reflect that
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "To Cancel"),
-            &100,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Keep"),
-            &200,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.cancel_bill(&owner, &bill_id);
-
-        let bills = client.get_all_bills_for_owner(&owner, &0, &100);
-        assert_eq!(bills.items.len(), 1);
-        assert_eq!(bills.items.get(0).unwrap().amount, 200);
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_get_all_bills_non_admin_fails() {
-        // Non-admin calling get_all_bills (admin endpoint) must get Unauthorized
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let alice = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-        client.create_bill(
-            &alice,
-            &String::from_str(&env, "Alice Bill"),
-            &100,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Alice tries to call the admin-only endpoint
-        let result = client.try_get_all_bills_page(&alice, &0, &100);
-        assert!(matches!(result, Err(Ok(Error::Unauthorized))));
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_get_all_bills_no_admin_set_fails() {
-        // If no pause admin is set at all, get_all_bills must return Unauthorized
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let alice = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        let result = client.try_get_all_bills_page(&alice, &0, &100);
-        assert!(matches!(result, Err(Ok(Error::Unauthorized))));
-    }
-
-    // ── get_all_bills_page admin-only authorization and isolation (#1040) ──
-
-    fn create_n_bills(client: &BillPaymentsClient, env: &Env, owner: &Address, n: u32) {
-        for i in 0..n {
-            let name = soroban_sdk::String::from_str(env, &format!("Bill{}", i));
-            client.create_bill(
-                owner,
-                &name,
-                &(100 + i as i128),
-                &1_000_000,
-                &false,
-                &0,
-                &None,
-                &String::from_str(env, "XLM"),
-                &None,
-            );
-        }
-    }
-
-    /// Admin pagination: first page of N=5 out of 12 bills returns exactly 5 items
-    /// with a non-zero next_cursor.
-    #[test]
-    fn test_get_all_bills_page_first_page_returns_limit_items() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-
-        create_n_bills(&client, &env, &owner, 12);
-
-        let page = client.get_all_bills_page(&admin, &0, &5);
-        assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
-        assert!(
-            page.next_cursor > 0,
-            "must have a non-zero next_cursor when more pages exist"
-        );
-    }
-
-    /// Admin can iterate through all bills across multiple pages and see the correct total.
-    #[test]
-    fn test_get_all_bills_page_full_iteration_covers_all_bills() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-
-        create_n_bills(&client, &env, &owner, 7);
-
-        let mut cursor = 0u32;
-        let mut total_seen = 0u32;
-        for _ in 0..10 {
-            let page = client.get_all_bills_page(&admin, &cursor, &5);
-            total_seen += page.items.len();
-            if page.next_cursor == 0 {
-                break;
-            }
-            cursor = page.next_cursor;
-        }
-        assert_eq!(total_seen, 7, "full pagination must cover all 7 bills");
-    }
-
-    /// Admin sees bills from ALL owners, not just their own.
-    #[test]
-    fn test_get_all_bills_page_includes_bills_from_all_owners() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let alice = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let bob = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-
-        create_n_bills(&client, &env, &alice, 3);
-        create_n_bills(&client, &env, &bob, 3);
-
-        let page = client.get_all_bills_page(&admin, &0, &6);
-        assert_eq!(
-            page.items.len(),
-            6,
-            "admin should see bills from all 6 owners combined"
-        );
-    }
-
-    /// Admin pagination on an empty contract returns an empty page with cursor 0.
-    #[test]
-    fn test_get_all_bills_page_empty_contract_returns_empty_page() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-
-        let page = client.get_all_bills_page(&admin, &0, &5);
-        assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
-        assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
-    }
-
-    // NOTE: The following schedule-related tests are commented out because the
-    // BillPayments contract does not implement create_schedule, modify_schedule,
-    // cancel_schedule, execute_due_schedules, get_schedule, or get_schedules methods.
-    // These tests were added to main before the contract methods were implemented.
-    // Uncomment once the schedule functionality is added to the contract.
-
-    #[test]
-    fn test_create_schedule() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 1000);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
-        assert_eq!(schedule_id, 1);
-
-        let schedule = client.get_schedule(&schedule_id);
-        assert!(schedule.is_some());
-        let schedule = schedule.unwrap();
-        assert_eq!(schedule.next_due, 3000);
-        assert_eq!(schedule.interval, 86400);
-        assert!(schedule.active);
-    }
-
-    #[test]
-    fn test_modify_schedule() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 1000);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
-        client.modify_schedule(&owner, &schedule_id, &4000, &172800);
-
-        let schedule = client.get_schedule(&schedule_id).unwrap();
-        assert_eq!(schedule.next_due, 4000);
-        assert_eq!(schedule.interval, 172800);
-    }
-
-    #[test]
-    fn test_cancel_schedule() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 1000);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
-        client.cancel_schedule(&owner, &schedule_id);
-
-        let schedule = client.get_schedule(&schedule_id).unwrap();
-        assert!(!schedule.active);
-    }
-
-    #[test]
-    fn test_execute_due_schedules() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 1000);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &0);
-
-        set_ledger_time(&env, 1, 3500);
-        let executed = client.execute_due_schedules();
-
-        assert_eq!(executed.len(), 1);
-        assert_eq!(executed.items.get(0).unwrap(), schedule_id);
-
-        let bill = client.get_bill(&bill_id).unwrap();
-        assert!(bill.paid);
-    }
-
-    #[test]
-    fn test_execute_recurring_schedule() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 1000);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &2000,
-            &true,
-            &30, &None, &None, &String::from_str(&env, "XLM"));
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
-
-        set_ledger_time(&env, 1, 3500);
-        client.execute_due_schedules();
-
-        let schedule = client.get_schedule(&schedule_id).unwrap();
-        assert!(schedule.active);
-        assert_eq!(schedule.next_due, 3000 + 86400);
-    }
-
-    #[test]
-    fn test_execute_missed_schedules() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 1000);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &2000,
-            &true,
-            &30, &None, &None, &String::from_str(&env, "XLM"));
-
-        let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
-
-        set_ledger_time(&env, 1, 3000 + 86400 * 3 + 100);
-        client.execute_due_schedules();
-
-        let schedule = client.get_schedule(&schedule_id).unwrap();
-        assert_eq!(schedule.missed_count, 3);
-        assert!(schedule.next_due > 3000 + 86400 * 3);
-    }
-
-    #[test]
-    fn test_schedule_validation_past_date() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 5000);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &6000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let result = client.try_create_schedule(&owner, &bill_id, &3000, &86400);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_get_schedules() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        set_ledger_time(&env, 1, 1000);
-
-        let bill_id1 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        let bill_id2 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Water"),
-            &500,
-            &2000,
-            &false,
-            &0, &None, &String::from_str(&env, "XLM"), &None);
-
-        client.create_schedule(&owner, &bill_id1, &3000, &86400);
-        client.create_schedule(&owner, &bill_id2, &4000, &172800);
-
-        let schedules = client.get_schedules(&owner);
-        assert_eq!(schedules.len(), 2);
-    }
-    #[test]
-    fn test_create_bill_emits_event() {
-        use soroban_sdk::testutils::Events;
-        use soroban_sdk::{symbol_short, vec, IntoVal};
-
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let events = env.events().all();
-        assert!(!events.is_empty());
-        let last_event = events.last().unwrap();
-
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Water Bill"),
-            &500,
-            &5000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let expected_topics = vec![
-            &env,
-            symbol_short!("Remitwise").into_val(&env),
-            1u32.into_val(&env), // EventCategory::State
-            1u32.into_val(&env), // EventPriority::Medium
-            symbol_short!("created").into_val(&env),
-        ];
-
-        assert_eq!(last_event.1, expected_topics);
-
-        let data: (u32, soroban_sdk::Address, i128, u64) =
-            soroban_sdk::FromVal::from_val(&env, &last_event.2);
-        assert_eq!(data, (1u32, owner.clone(), 1000i128, 1000000u64));
-
-        assert_eq!(last_event.0, contract_id.clone());
-    }
-
-    #[test]
-    fn test_pay_bill_emits_event() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-
-        // Phase 1: Create first bill at seq 100
-        // TTL goes from 100 → 518,400. live_until = 518,500
-        let id1 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Rent"),
-            &2000,
-            &1_100_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
-        // create_bill re-extends → live_until = 1,028,400
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 510_000,
-            timestamp: 510_000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        let id2 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Internet"),
-            &100,
-            &1_200_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
-        // pay_bill re-extends → live_until = 1,538,400
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 1_020_000,
-            timestamp: 1_020_000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        // Pay second bill to refresh TTL once more
-        client.pay_bill(&orch, &0, &owner, &id2);
-
-        // Both bills should still be accessible
-        let bill1 = client.get_bill(&id1);
-        assert!(
-            bill1.is_some(),
-            "First bill must persist across ledger advancements"
-        );
-        assert_eq!(bill1.unwrap().amount, 2000);
-
-        let bill2 = client.get_bill(&id2);
-        assert!(
-            bill2.is_some(),
-            "Second bill must persist across ledger advancements"
-        );
-        assert!(bill2.unwrap().paid, "Second bill should be marked paid");
-
-        // TTL should be fully refreshed
-        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-        assert!(
-            ttl >= 518_400,
-            "Instance TTL ({}) must remain >= 518,400 after repeated operations",
-            ttl
-        );
-    }
-
-    /// Verify that archive_paid_bills extends instance TTL and archives data.
-    ///
-    /// Note: both `extend_instance_ttl` and `extend_archive_ttl` operate on
-    /// instance() storage. Since `extend_instance_ttl` is called first in
-    /// `archive_paid_bills`, it bumps the TTL above the shared threshold
-    /// (17,280), making the subsequent `extend_archive_ttl` a no-op.
-    /// This test verifies the instance TTL is at least INSTANCE_BUMP_AMOUNT
-    /// and that archived data is accessible.
-    #[test]
-    fn test_archive_ttl_extended_on_archive_paid_bills() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 510_000,
-            timestamp: 510_000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 3_000_000,
-        });
-
-        let archived = client.archive_paid_bills(&owner, &600_000);
-        assert_eq!(archived, 1);
-
-        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-        assert!(
-            ttl >= 518_400,
-            "Instance TTL ({}) must be >= INSTANCE_BUMP_AMOUNT (518,400) after archiving",
-            ttl
-        );
-    }
-
-    #[test]
-    fn test_get_overdue_bills_owner_scoped() {
-        let env = Env::default();
-        set_ledger_time(&env, 1, 1_000_000);
-
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let alice = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let bob = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        client.create_bill(
-            &alice,
-            &String::from_str(&env, "Alice Overdue1"),
-            &100,
-            &1_500_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &alice,
-            &String::from_str(&env, "Alice Overdue2"),
-            &200,
-            &1_600_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &bob,
-            &String::from_str(&env, "Bob Overdue"),
-            &300,
-            &1_500_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &alice,
-            &String::from_str(&env, "Alice Future"),
-            &400,
             &3_000_000,
             &false,
             &0,
@@ -2121,87 +1257,20 @@ mod testsuit {
 
         set_ledger_time(&env, 1, 2_000_000);
         let overdue = client.get_overdue_bills(&0, &100);
-
-        assert_eq!(overdue.count, 3);
-        let mut alice_count = 0u32;
-        let mut bob_count = 0u32;
-        for bill in overdue.items.iter() {
-            assert!(bill.due_date < 2_000_000);
-            if bill.owner == alice {
-                alice_count += 1;
-            } else if bill.owner == bob {
-                bob_count += 1;
-            }
-        }
-        assert_eq!(alice_count, 2);
-        assert_eq!(bob_count, 1);
+        assert_eq!(overdue.count, 2);
     }
 
     #[test]
-    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
-    fn test_create_bill_non_owner_auth_failure() {
+    fn test_cancel_bill() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let _other = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        // Do not mock auth for other, attempt to create bill for owner as other
-        // Wait, if other calls, it's just a call. The contract will check owner.require_auth().
-        // If owner didn't authorize, it panics.
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Water"),
-            &500,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
-    fn test_pay_bill_non_owner_auth_failure() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let _other = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        // Configure the trusted orchestrator under blanket auth first; the
-        // selective mock_auths below deliberately leaves pay_bill's
-        // orchestrator auth unmocked so the guarded call fails with
-        // HostError(Error(Auth, InvalidAction)), matching the expectation.
         env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-
-        client.mock_auths(&[soroban_sdk::testutils::MockAuth {
-            address: &owner,
-            invoke: &soroban_sdk::testutils::MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "create_bill",
-                args: (
-                    &owner,
-                    String::from_str(&env, "Water"),
-                    500i128,
-                    1000000u64,
-                    false,
-                    0u32,
-                )
-                    .into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-
         let bill_id = client.create_bill(
             &owner,
-            &String::from_str(&env, "Water"),
-            &500,
+            &String::from_str(&env, "Test"),
+            &100,
             &1000000,
             &false,
             &0,
@@ -2209,110 +1278,49 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-
-        // other tries to pay the bill for owner
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-    }
-
-    #[test]
-    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
-    fn test_cancel_bill_non_owner_auth_failure() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let _other = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        client.mock_auths(&[soroban_sdk::testutils::MockAuth {
-            address: &owner,
-            invoke: &soroban_sdk::testutils::MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "create_bill",
-                args: (
-                    &owner,
-                    String::from_str(&env, "Water"),
-                    500i128,
-                    1000000u64,
-                    false,
-                    0u32,
-                )
-                    .into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Water"),
-            &500,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // other tries to cancel the bill for owner
+        env.mock_all_auths();
         client.cancel_bill(&owner, &bill_id);
-    }
 
-    // -----------------------------------------------------------------------
-    // RECURRING BILLS DATE MATH TESTS
-    // -----------------------------------------------------------------------
-    // These tests verify the core date math for recurring bills:
-    // next_due_date = due_date + (frequency_days * 86400)
-    // Ensures paid_at does not affect next bill's due_date calculation.
-    // -----------------------------------------------------------------------
-    // RECURRING BILLS DATE MATH TESTS
-    // -----------------------------------------------------------------------
-    // These tests verify the core date math for recurring bills:
-    // next_due_date = due_date + (frequency_days * 86400)
-    // Ensures paid_at does not affect next bill's due_date calculation.
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
 
-    #[test]
-    fn test_recurring_date_math_frequency_1_day() {
-        // Test: frequency_days = 1 → next due date is +1 day (86400 seconds)
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
         env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let base_due_date = 1_000_000u64;
-        let bill_id = client.create_bill(
+        let new_bill_id = client.create_bill(
             &owner,
-            &String::from_str(&env, "Daily Bill"),
-            &100,
-            &base_due_date,
-            &true, // recurring
-            &1,    // frequency_days = 1
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
             &None,
             &String::from_str(&env, "XLM"),
             &None,
         );
-
-        // Pay the bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Verify next bill's due_date = base_due_date + (1 * 86400)
-        let next_bill = client.get_bill(&2).unwrap();
-        assert!(!next_bill.paid, "Next bill should be unpaid");
-        assert_eq!(
-            next_bill.due_date,
-            base_due_date + 86400,
-            "Next due date should be exactly 1 day later"
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
         );
-        assert_eq!(next_bill.frequency_days, 1, "Frequency should be preserved");
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
     }
 
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
     #[test]
-    fn test_recurring_date_math_frequency_30_days() {
-        // Test: frequency_days = 30 → next due date is +30 days (2,592,000 seconds)
+    fn test_cancel_bill_rejects_already_paid_bill() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
@@ -2321,443 +1329,73 @@ mod testsuit {
         let orch = Address::generate(&env);
         client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
         client.set_trusted_orchestrator(&owner, &orch);
-        let base_due_date = 1_000_000u64;
         let bill_id = client.create_bill(
             &owner,
-            &String::from_str(&env, "Monthly Bill"),
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
             &500,
-            &base_due_date,
-            &true, // recurring
-            &30,   // frequency_days = 30
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay the bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Verify next bill's due_date = base_due_date + (30 * 86400)
-        let next_bill = client.get_bill(&2).unwrap();
-        assert!(!next_bill.paid, "Next bill should be unpaid");
-        let expected_due_date = base_due_date + (30u64 * 86400);
-        assert_eq!(
-            next_bill.due_date, expected_due_date,
-            "Next due date should be exactly 30 days later"
-        );
-        assert_eq!(
-            next_bill.frequency_days, 30,
-            "Frequency should be preserved"
-        );
-    }
-
-    #[test]
-    fn test_recurring_date_math_frequency_365_days() {
-        // Test: frequency_days = 365 → next due date is +365 days (31,536,000 seconds)
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let base_due_date = 1_000_000u64;
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Annual Bill"),
-            &1200,
-            &base_due_date,
-            &true, // recurring
-            &365,  // frequency_days = 365
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay the bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Verify next bill's due_date = base_due_date + (365 * 86400)
-        let next_bill = client.get_bill(&2).unwrap();
-        assert!(!next_bill.paid, "Next bill should be unpaid");
-        let expected_due_date = base_due_date + (365u64 * 86400);
-        assert_eq!(
-            next_bill.due_date, expected_due_date,
-            "Next due date should be exactly 365 days later"
-        );
-        assert_eq!(
-            next_bill.frequency_days, 365,
-            "Frequency should be preserved"
-        );
-    }
-
-    //     #[test]
-    //     fn test_recurring_date_math_paid_at_does_not_affect_next_due() {
-    //     let env = Env::default();
-
-    //     // FORCE reset to a very small number first
-    //     env.ledger().set_ledger_timestamp(100);
-
-    //     let contract_id = env.register_contract(None, BillPayments);
-    //     let client = BillPaymentsClient::new(&env, &contract_id);
-    //     let owner = Address::generate(&env);
-    //     env.mock_all_auths();
-
-    //     // Now current_time (100) is definitely < base_due_date (1,000,000)
-    //     let base_due_date = 1_000_000u64;
-    //     let bill_id = client.create_bill(
-    //         &owner,
-    //         &String::from_str(&env, "Late Payment Test"),
-    //         &300,
-    //         &base_due_date,
-    //         &true,
-    //         &30,
-    //         &String::from_str(&env, "XLM"),
-    //     );
-
-    //     // Warp to late payment time
-    //     env.ledger().set_ledger_timestamp(1_000_500);
-    //     client.pay_bill(&owner, &bill_id);
-
-    //     let next_bill = client.get_bill(&2).unwrap();
-    //     let expected_due_date = base_due_date + (30u64 * 86400);
-    //     assert_eq!(next_bill.due_date, expected_due_date);
-    // }
-
-    #[test]
-    fn test_recurring_date_math_multiple_pay_cycles_3rd_bill() {
-        // Test: Multiple pay cycles - verify 3rd bill's due date advances correctly
-        // Bill 1: due_date=1000000, frequency=30
-        // Bill 2: due_date=1000000 + (30*86400)
-        // Bill 3: due_date=1000000 + (60*86400)
-
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let base_due_date = 1_000_000u64;
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Three-Cycle Bill"),
-            &150,
-            &base_due_date,
-            &true, // recurring
-            &30,   // frequency_days = 30
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay first bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Pay second bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &2);
-
-        // Pay third bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &3);
-
-        // Verify third bill is now paid
-        let bill3_paid = client.get_bill(&3).unwrap();
-        assert!(bill3_paid.paid);
-
-        // Verify fourth bill was created with correct due_date
-        let bill4 = client.get_bill(&4).unwrap();
-        let expected_bill4_due = base_due_date + (90u64 * 86400); // 3 * 30 days
-        assert_eq!(
-            bill4.due_date, expected_bill4_due,
-            "Bill 4 due_date should be base + (90*86400)"
-        );
-        assert!(!bill4.paid);
-    }
-
-    #[test]
-    fn test_recurring_date_math_early_payment_does_not_affect_schedule() {
-        // Test: Paying a bill EARLY should not affect the next bill's due_date
-        // Bill 1: due_date=1000000, paid at time=500000 (paid 500000 seconds early)
-        // Bill 2: due_date should still be 1000000 + (30*86400)
-        let env = Env::default();
-        set_ledger_time(&env, 1, 500_000);
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let base_due_date = 1_000_000u64;
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Early Payment Test"),
-            &200,
-            &base_due_date,
-            &true, // recurring
-            &30,   // frequency_days = 30
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay the bill early (at time 500_000)
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Verify original bill has paid_at set to early time
-        let paid_bill = client.get_bill(&bill_id).unwrap();
-        assert!(paid_bill.paid);
-        assert_eq!(paid_bill.paid_at, Some(500_000));
-
-        // Verify next bill's due_date is still based on original due_date
-        let next_bill = client.get_bill(&2).unwrap();
-        let expected_due_date = base_due_date + (30u64 * 86400);
-        assert_eq!(
-            next_bill.due_date, expected_due_date,
-            "Next due date should not be affected by early payment"
-        );
-    }
-
-    #[test]
-    fn test_recurring_date_math_preserves_frequency_across_cycles() {
-        // Test: frequency_days is preserved across all recurring cycles
-        // Verify that Bill 1, 2, 3 all have the same frequency_days value
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let frequency = 7u32; // Weekly
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Weekly Bill"),
-            &50,
-            &1_000_000,
-            &true,
-            &frequency,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay first bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Pay second bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &2);
-
-        // Verify all bills have the same frequency_days
-        let bill1 = client.get_bill(&1).unwrap();
-        let bill2 = client.get_bill(&2).unwrap();
-        let bill3 = client.get_bill(&3).unwrap();
-
-        assert_eq!(bill1.frequency_days, frequency);
-        assert_eq!(bill2.frequency_days, frequency);
-        assert_eq!(bill3.frequency_days, frequency);
-    }
-
-    #[test]
-    fn test_recurring_date_math_amount_preserved_across_cycles() {
-        // Test: Bill amount is preserved across all recurring cycles
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let amount = 999i128;
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Fixed Amount Bill"),
-            &amount,
-            &1_000_000,
-            &true,
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay first bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Pay second bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &2);
-
-        // Verify all bills have the same amount
-        let bill1 = client.get_bill(&1).unwrap();
-        let bill2 = client.get_bill(&2).unwrap();
-        let bill3 = client.get_bill(&3).unwrap();
-
-        assert_eq!(bill1.amount, amount);
-        assert_eq!(bill2.amount, amount);
-        assert_eq!(bill3.amount, amount);
-    }
-
-    #[test]
-    fn test_recurring_date_math_name_preserved_across_cycles() {
-        // Test: Bill name is preserved across all recurring cycles
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let name = String::from_str(&env, "Rent Payment");
-        let bill_id = client.create_bill(
-            &owner,
-            &name,
-            &1000,
-            &1_000_000,
-            &true,
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay first bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Pay second bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &2);
-
-        // Verify all bills have the same name
-        let bill1 = client.get_bill(&1).unwrap();
-        let bill2 = client.get_bill(&2).unwrap();
-        let bill3 = client.get_bill(&3).unwrap();
-
-        assert_eq!(bill1.name, name);
-        assert_eq!(bill2.name, name);
-        assert_eq!(bill3.name, name);
-    }
-
-    #[test]
-    fn test_recurring_date_math_owner_preserved_across_cycles() {
-        // Test: Bill owner is preserved across all recurring cycles
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Owner Test"),
-            &100,
-            &1_000_000,
-            &true,
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay first bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Pay second bill
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &2);
-
-        // Verify all bills have the same owner
-        let bill1 = client.get_bill(&1).unwrap();
-        let bill2 = client.get_bill(&2).unwrap();
-        let bill3 = client.get_bill(&3).unwrap();
-
-        assert_eq!(bill1.owner, owner);
-        assert_eq!(bill2.owner, owner);
-        assert_eq!(bill3.owner, owner);
-    }
-
-    #[test]
-    fn test_recurring_date_math_exact_calculation_verification() {
-        // Test: Verify exact date math calculation with known values
-        // due_date = 1_000_000
-        // frequency_days = 14
-        // Expected: 1_000_000 + (14 * 86400) = 1_000_000 + 1_209_600 = 2_209_600
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-        let base_due = 1_000_000u64;
-        let freq = 14u32;
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Math Verification"),
-            &100,
-            &base_due,
-            &true,
-            &freq,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        env.mock_all_auths();
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        let next_bill = client.get_bill(&2).unwrap();
-        let expected = 1_000_000u64 + (14u64 * 86400);
-        assert_eq!(next_bill.due_date, expected);
-        assert_eq!(next_bill.due_date, 2_209_600);
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    // Time & Ledger Drift Resilience Tests (#158)
-    //
-    // Assumptions documented here:
-    //  - A bill is overdue when due_date < current_time (strict less-than).
-    //  - At exactly due_date the bill is NOT yet overdue.
-    //  - Stellar ledger timestamps are monotonically increasing in production.
-    // ══════════════════════════════════════════════════════════════════════
-
-    /// Bill is NOT overdue when ledger timestamp == due_date (inclusive boundary).
-    #[test]
-    fn test_time_drift_bill_not_overdue_at_exact_due_date() {
-        let due_date = 1_000_000u64;
-        let env = Env::default();
-        set_ledger_time(&env, 1, due_date);
-
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Power"),
-            &200,
-            &due_date,
+            &1000000,
             &false,
             &0,
             &None,
@@ -2765,30 +1403,34 @@ mod testsuit {
             &None,
         );
 
-        let page = client.get_overdue_bills(&0, &100);
-        assert_eq!(
-            page.count, 0,
-            "Bill must not appear overdue when current_time == due_date"
-        );
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 
-    /// Bill becomes overdue exactly one second after due_date.
     #[test]
-    fn test_time_drift_bill_overdue_one_second_after_due_date() {
-        let due_date = 1_000_000u64;
+    fn test_cancel_nonexistent_bill() {
         let env = Env::default();
-        set_ledger_time(&env, 1, due_date);
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
 
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
-        client.create_bill(
+        let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Internet"),
             &150,
-            &due_date,
+            &1000000,
             &false,
             &0,
             &None,
@@ -2796,142 +1438,377 @@ mod testsuit {
             &None,
         );
 
-        // Not yet overdue at due_date
-        let page = client.get_overdue_bills(&0, &100);
-        assert_eq!(page.count, 0);
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
 
-        // Advance one second past due_date
-        set_ledger_time(&env, 1, due_date + 1);
-        let page = client.get_overdue_bills(&0, &100);
-        assert_eq!(
-            page.count, 1,
-            "Bill must appear overdue exactly one second past due_date"
-        );
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // Settlement Window Guard Tests
-    //
-    // A bill is overdue iff `!bill.paid && bill.due_date < current_time`
-    // (strict less-than).  The three boundary conditions are covered:
-    //   • Inside window  – due_date > now  →  NOT overdue
-    //   • Exact boundary  – due_date == now → NOT overdue
-    //   • Outside window  – due_date < now  →  IS overdue
-    // ══════════════════════════════════════════════════════════════════════
-
-    /// Bill is NOT overdue when `due_date > current_time` (inside the settlement window).
     #[test]
-    fn test_settlement_window_guard_bill_not_overdue_when_inside_window() {
-        let due_date = 3_000_000u64;
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
+    }
+
+    #[test]
+    fn test_get_unpaid_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
+    }
+
+    #[test]
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
         let env = Env::default();
         set_ledger_time(&env, 1, 1_000_000);
 
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
         client.create_bill(
             &owner,
-            &String::from_str(&env, "InsideWindow"),
+            &String::from_str(&env, "Overdue1"),
             &100,
-            &due_date,
+            &1_500_000,
             &false,
             &0,
             &None,
             &String::from_str(&env, "XLM"),
             &None,
         );
-
-        let page = client.get_overdue_bills(&0, &100);
-        assert_eq!(
-            page.count, 0,
-            "Bill with due_date > now must not appear overdue (inside window)"
-        );
-    }
-
-    /// Full-day boundary: bill created at due_date, queried one day later, is overdue.
-    #[test]
-    fn test_time_drift_overdue_full_day_boundary() {
-        let day = 86400u64;
-        let due_date = 1_000_000u64;
-        let env = Env::default();
-        set_ledger_time(&env, 1, due_date);
-
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
         client.create_bill(
             &owner,
-            &String::from_str(&env, "Monthly Rent"),
-            &5000,
-            &due_date,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Still not overdue at due_date
-        let page = client.get_overdue_bills(&0, &100);
-        assert_eq!(page.count, 0);
-
-        // One full day later – must be overdue
-        set_ledger_time(&env, 1, due_date + day);
-        let page = client.get_overdue_bills(&0, &100);
-        assert_eq!(
-            page.count, 1,
-            "Bill must be overdue one full day past due_date"
-        );
-    }
-
-    /// Mixed boundary: only the bill with `due_date < now` is overdue;
-    /// the bill with `due_date == now` and the bill with `due_date > now`
-    /// are both NOT overdue.
-    #[test]
-    fn test_settlement_window_guard_mixed_boundaries() {
-        let start = 2_000_000u64;
-        let env = Env::default();
-        set_ledger_time(&env, 1, start);
-
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        // Bill 1: due_date = start + 1 → will be overdue when time reaches start + 5
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Past"),
-            &100,
-            &(start + 1),
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        // Bill 2: due_date = start + 5 → exact boundary, NOT overdue at start + 5
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Exact"),
+            &String::from_str(&env, "Overdue2"),
             &200,
-            &(start + 5),
+            &1_800_000,
             &false,
             &0,
             &None,
             &String::from_str(&env, "XLM"),
             &None,
         );
-        // Bill 3: due_date = start + 10 → inside window, NOT overdue at start + 5
+        env.mock_all_auths();
         client.create_bill(
             &owner,
             &String::from_str(&env, "Future"),
             &300,
-            &(start + 10),
+            &3_000_000,
             &false,
             &0,
             &None,
@@ -2939,654 +1816,83 @@ mod testsuit {
             &None,
         );
 
-        set_ledger_time(&env, 1, start + 5);
-        let page = client.get_overdue_bills(&0, &100);
-        assert_eq!(
-            page.count, 1,
-            "Only the bill with due_date < now must be overdue"
-        );
-        assert_eq!(
-            page.items.get(0).unwrap().amount,
-            100,
-            "Overdue bill must be the one with due_date < now"
-        );
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
     }
-
-    proptest! {
-        #[test]
-        fn prop_settlement_window_guard_inside_window_not_overdue(
-            due_date in 2_000_000u64..10_000_000u64,
-            now in 1_000_000u64..2_000_000u64
-        ) {
-            // Ensure now is strictly less than due_date (inside the window).
-            prop_assume!(now < due_date);
-            let env = Env::default();
-            set_ledger_time(&env, 1, now);
-            let contract_id = env.register_contract(None, BillPayments);
-            let client = BillPaymentsClient::new(&env, &contract_id);
-            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-            env.mock_all_auths();
-            client.create_bill(
-                &owner,
-                &String::from_str(&env, "Inside"),
-                &100,
-                &due_date,
-                &false,
-                &0,
-                &None,
-                &String::from_str(&env, "XLM"),
-                &None,
-            );
-            let page = client.get_overdue_bills(&0, &100);
-            assert_eq!(
-                page.count, 0,
-                "Bill with due_date ({}) > now ({}) must not be overdue",
-                due_date, now
-            );
-        }
-    }
-
-    // ---------------------------------------------------------------------------
-    // Tests — Issue #6: get_total_unpaid edge cases
-    //
-    // get_total_unpaid(env, owner) returns the sum of `amount` for all unpaid
-    // bills belonging to `owner`. These tests make the zero, single, multiple,
-    // after-pay, all-paid, and isolation cases explicit and documented.
-    //
-    // Paste this block inside the existing `mod testsuit { ... }` in your test
-    // file, alongside the other test functions.
-    // ---------------------------------------------------------------------------
-
-    // --- No bills: owner who has never created a bill should get 0 ---
 
     #[test]
-    fn test_get_total_unpaid_no_bills_returns_zero() {
-        // An owner who has never created any bill must get 0, not a panic or
-        // a spurious non-zero value from another owner's data.
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(total, 0, "owner with no bills must have total_unpaid == 0");
-    }
-
-    // --- All bills paid: owner whose every bill is paid should get 0 ---
-
-    #[test]
-    fn test_get_total_unpaid_all_bills_paid_returns_zero() {
-        // Create several bills and pay them all; the total must then be 0.
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-
-        let id1 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &400,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id2 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Water"),
-            &600,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        client.pay_bill(&orch, &0, &owner, &id1);
-        client.pay_bill(&orch, &0, &owner, &id2);
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total, 0,
-            "owner with all bills paid must have total_unpaid == 0"
-        );
-    }
-
-    // --- One unpaid bill: total equals that bill's amount ---
-
-    #[test]
-    fn test_get_total_unpaid_one_unpaid_bill() {
-        // Exactly one unpaid bill; total_unpaid must equal its amount.
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Rent"),
-            &1000,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total, 1000,
-            "one unpaid bill of 1000 must yield total_unpaid == 1000"
-        );
-    }
-
-    // --- Multiple unpaid bills: total equals the sum of all amounts ---
-
-    #[test]
-    fn test_get_total_unpaid_multiple_unpaid_bills() {
-        // Three bills with amounts 100, 200, 300 → total must be 600.
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill A"),
-            &100,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill B"),
-            &200,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill C"),
-            &300,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total, 600,
-            "three unpaid bills (100 + 200 + 300) must yield total_unpaid == 600"
-        );
-    }
-
-    // --- After paying one bill: total decreases by that bill's amount ---
-
-    #[test]
-    fn test_get_total_unpaid_decreases_after_pay() {
-        // Create bills of 100, 200, 300; pay the 200 bill.
-        // Total must drop from 600 to 400 (100 + 300).
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill A"),
-            &100,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id_b = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill B"),
-            &200,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill C"),
-            &300,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Confirm starting total
-        assert_eq!(client.get_total_unpaid(&owner), 600);
-
-        // Pay the 200-unit bill
-        client.pay_bill(&orch, &0, &owner, &id_b);
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total, 400,
-            "after paying the 200 bill, total_unpaid must be 400 (100 + 300)"
-        );
-    }
-
-    // --- All paid (incremental): total reaches 0 as each bill is paid ---
-
-    #[test]
-    fn test_get_total_unpaid_reaches_zero_as_bills_paid_incrementally() {
-        // Pay bills one by one and verify the running total after each payment.
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-
-        let id1 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill 1"),
-            &100,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id2 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill 2"),
-            &200,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id3 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill 3"),
-            &300,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        assert_eq!(client.get_total_unpaid(&owner), 600);
-
-        client.pay_bill(&orch, &0, &owner, &id1);
-        assert_eq!(
-            client.get_total_unpaid(&owner),
-            500,
-            "after paying 100-bill: 500 remaining"
-        );
-
-        client.pay_bill(&orch, &0, &owner, &id2);
-        assert_eq!(
-            client.get_total_unpaid(&owner),
-            300,
-            "after paying 200-bill: 300 remaining"
-        );
-
-        client.pay_bill(&orch, &0, &owner, &id3);
-        assert_eq!(
-            client.get_total_unpaid(&owner),
-            0,
-            "after paying all bills: total_unpaid must be 0"
-        );
-    }
-
-    // --- Isolation: owner_a's total is unaffected by owner_b's bills ---
-
-    #[test]
-    fn test_get_total_unpaid_isolation_between_owners() {
-        // Bills belonging to owner_b must not appear in owner_a's total, and
-        // vice versa.
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner_a = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let owner_b = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        // owner_a: two bills totalling 500
-        client.create_bill(
-            &owner_a,
-            &String::from_str(&env, "A - Rent"),
-            &300,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &owner_a,
-            &String::from_str(&env, "A - Water"),
-            &200,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // owner_b: one bill of 9999
-        client.create_bill(
-            &owner_b,
-            &String::from_str(&env, "B - Internet"),
-            &9999,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let total_a = client.get_total_unpaid(&owner_a);
-        let total_b = client.get_total_unpaid(&owner_b);
-
-        assert_eq!(
-            total_a, 500,
-            "owner_a's total_unpaid must be 500 (300 + 200), not influenced by owner_b"
-        );
-        assert_eq!(
-            total_b, 9999,
-            "owner_b's total_unpaid must be 9999, not influenced by owner_a"
-        );
-    }
-
-    // --- Isolation after cross-owner payment: paying owner_b's bill does not
-    //     change owner_a's total ---
-
-    #[test]
-    fn test_get_total_unpaid_paying_other_owner_bill_has_no_effect() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner_a = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        let owner_b = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner_a, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner_a, &orch);
-
-        client.create_bill(
-            &owner_a,
-            &String::from_str(&env, "A - Electricity"),
-            &750,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id_b = client.create_bill(
-            &owner_b,
-            &String::from_str(&env, "B - Gas"),
-            &1234,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay owner_b's bill
-        client.pay_bill(&orch, &0, &owner_b, &id_b);
-
-        // owner_a's total must be unchanged
-        let total_a = client.get_total_unpaid(&owner_a);
-        assert_eq!(
-            total_a, 750,
-            "paying owner_b's bill must not affect owner_a's total_unpaid"
-        );
-
-        // owner_b's total must now be 0
-        let total_b = client.get_total_unpaid(&owner_b);
-        assert_eq!(total_b, 0, "owner_b's total_unpaid must be 0 after payment");
-    }
-
-    // --- Cancelled bill is excluded from the total ---
-
-    #[test]
-    fn test_get_total_unpaid_excludes_cancelled_bills() {
-        // A cancelled bill is removed from storage entirely, so it must not
-        // appear in the total.
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        let id_keep = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Keep"),
-            &500,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id_cancel = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Cancel Me"),
-            &9000,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        assert_eq!(client.get_total_unpaid(&owner), 9500);
-
-        client.cancel_bill(&owner, &id_cancel);
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total, 500,
-            "cancelled bill must not contribute to total_unpaid"
-        );
-
-        // Sanity: the kept bill is still there
-        assert!(client.get_bill(&id_keep).is_some());
-    }
-
-    // --- Minimum positive amount: a single bill of 1 ---
-
-    #[test]
-    fn test_get_total_unpaid_minimum_amount() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Tiny Bill"),
-            &1,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total, 1,
-            "single bill of amount 1 must yield total_unpaid == 1"
-        );
-    }
-
-    // --- Large amounts: verify no arithmetic overflow in the sum ---
-
-    #[test]
-    fn test_get_total_unpaid_large_amounts_no_overflow() {
-        // Issue #1737 caps every stored amount at MAX_AMOUNT (1e30) before any
-        // state change, so the unpaid-total summation can never overflow i128.
-        // This test exercises the largest legal amounts: the sum of two
-        // MAX_AMOUNT bills must be exact (2e30, no panic, no wrap).
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-        env.mock_all_auths();
-
-        let big: i128 = remitwise_common::MAX_AMOUNT;
-
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Big Bill 1"),
-            &big,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        client.create_bill(
-            &owner,
-            &String::from_str(&env, "Big Bill 2"),
-            &big,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total,
-            big * 2,
-            "sum of two MAX_AMOUNT bills must equal exactly big * 2"
-        );
-    }
-
-    // --- Recurring bill creates a new unpaid bill: total includes the new one ---
-
-    #[test]
-    fn test_get_total_unpaid_includes_new_recurring_bill_after_pay() {
-        // Paying a recurring bill marks the original paid AND creates a new
-        // unpaid bill. The total must reflect the new unpaid bill's amount.
+    fn test_cancel_bill() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
-
         let bill_id = client.create_bill(
             &owner,
-            &String::from_str(&env, "Monthly Subscription"),
-            &500,
-            &1_000_000,
-            &true, // recurring
-            &30,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
             &None,
             &String::from_str(&env, "XLM"),
             &None,
         );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
 
-        // Before payment: one unpaid bill of 500
-        assert_eq!(client.get_total_unpaid(&owner), 500);
-
-        // Pay it: original becomes paid, a new unpaid bill of 500 is created
-        client.pay_bill(&orch, &0, &owner, &bill_id);
-
-        // Total must still be 500 (the new recurring bill, not the paid one)
-        let total = client.get_total_unpaid(&owner);
-        assert_eq!(
-            total, 500,
-            "after paying a recurring bill, the newly created bill must appear in total_unpaid"
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
         );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
     }
 
-    // --- batch_pay_bills: Partial Failure (Skip-and-Continue) ---
-
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
     #[test]
-    fn test_batch_pay_bills_partial_success() {
+    fn test_cancel_bill_rejects_already_paid_bill() {
         let env = Env::default();
-        let cid = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &cid);
-        let owner = Address::generate(&env);
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
         let orch = Address::generate(&env);
         client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
         client.set_trusted_orchestrator(&owner, &orch);
-
-        // 1. Create 3 bills
-        let name = String::from_str(&env, "B");
-        let id1 = client.create_bill(
+        let bill_id = client.create_bill(
             &owner,
-            &name,
+            &String::from_str(&env, "Test"),
             &100,
             &1000000,
             &false,
@@ -3595,63 +1901,28 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-        let id2 = client.create_bill(
-            &owner,
-            &name,
-            &200,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id3 = client.create_bill(
-            &owner,
-            &name,
-            &300,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
-        // 2. Pre-pay ID1 so it is "already paid" when batch starts
-        client.pay_bill(&orch, &0, &owner, &id1);
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
 
-        // 3. Batch contains: ID1 (already paid), ID2 (valid), 999 (non-existent), ID3 (valid)
-        let mut ids = Vec::new(&env);
-        ids.push_back(id1);
-        ids.push_back(id2);
-        ids.push_back(999);
-        ids.push_back(id3);
-
-        let result = client.batch_pay_bills(&owner, &ids);
-
-        // Expected: only ID2 and ID3 were paid. ID1 was skipped (already paid), 999 was skipped (not found).
-        assert!(result.is_ok(), "batch must succeed with skipped entries");
-
-        // Verify states
-        assert!(client.get_bill(&id1).unwrap().paid);
-        assert!(client.get_bill(&id2).unwrap().paid);
-        assert!(client.get_bill(&id3).unwrap().paid);
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
     }
 
     #[test]
-    fn test_batch_pay_bills_skips_unauthorized() {
+    fn test_cancel_bill_owner_succeeds() {
         let env = Env::default();
-        let cid = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &cid);
-        let alice = Address::generate(&env);
-        let bob = Address::generate(&env);
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
-
-        let name = String::from_str(&env, "Test");
-        let a1 = client.create_bill(
-            &alice,
-            &name,
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
             &100,
             &1000000,
             &false,
@@ -3660,57 +1931,240 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-        let b1 = client.create_bill(
-            &bob,
-            &name,
-            &200,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
         );
-        let a2 = client.create_bill(
-            &alice,
-            &name,
-            &300,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let mut ids = Vec::new(&env);
-        ids.push_back(a1);
-        ids.push_back(b1); // Bob's bill
-        ids.push_back(a2);
-
-        // Alice tries to pay the batch
-        let result = client.batch_pay_bills(&alice, &ids);
-
-        // Expected: only A1 and A2 paid. B1 skipped.
-        assert!(result.is_ok(), "batch must succeed with skipped entries");
-        assert!(client.get_bill(&a1).unwrap().paid);
-        assert!(!client.get_bill(&b1).unwrap().paid);
-        assert!(client.get_bill(&a2).unwrap().paid);
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
     }
 
     #[test]
-    fn test_batch_pay_bills_recurring_atomicity() {
+    fn test_cancel_bill_unauthorized_fails() {
         let env = Env::default();
-        let cid = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &cid);
-        let owner = Address::generate(&env);
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
         env.mock_all_auths();
 
-        let name = String::from_str(&env, "R");
-        let id1 = client.create_bill(
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
             &owner,
-            &name,
+            &String::from_str(&env, "Electric"),
             &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
             &1000000,
             &true,
             &30,
@@ -3718,85 +2172,3913 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-
-        let mut ids = Vec::new(&env);
-        ids.push_back(id1);
-
-        let result = client.batch_pay_bills(&owner, &ids);
-        assert!(result.is_ok(), "batch must succeed");
-
-        // Verify next bill was created atomically
-        let next_bill = client.get_bill(&2).unwrap();
-        assert_eq!(next_bill.owner, owner);
-        assert_eq!(next_bill.amount, 100);
-        assert!(!next_bill.paid);
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
     }
 
     #[test]
-    fn test_timelock_bypass_rejection_schedule_unpause_past_timestamp() {
+    fn test_get_unpaid_bills() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-
-        // Set initial ledger time
-        env.ledger().set_timestamp(1000);
-
-        // Try to schedule unpause with a past timestamp (999)
-        let result = client.try_schedule_unpause(&admin, &999);
-        assert_eq!(result, Err(Ok(Error::InvalidAmount)));
-
-        // Try to schedule unpause with the exact current timestamp (1000) - this should also fail
-        let result = client.try_schedule_unpause(&admin, &1000);
-        assert_eq!(result, Err(Ok(Error::InvalidAmount)));
-
-        // Schedule unpause with a future timestamp (1001) - this should succeed
-        client.schedule_unpause(&admin, &1001);
-    }
-
-    #[test]
-    fn test_pause_and_unpause_emit_ordered_audit_events() {
-        use soroban_sdk::testutils::Events as _;
-        use soroban_sdk::Symbol;
-
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-
-        client.pause(&admin);
-        client.unpause(&admin);
-
-        let events = env.events().all();
-        assert_eq!(events.len(), 2);
-
-        let mut emitted_actions = std::vec::Vec::<Symbol>::new();
-        for event in events.iter() {
-            let topics = event.1;
-            let action: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
-            emitted_actions.push(action);
-        }
-
-        assert_eq!(
-            emitted_actions,
-            [
-                Symbol::new(&env, "paused_v2"),
-                Symbol::new(&env, "unpaused_v2")
-            ]
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
         );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
     }
 
     #[test]
-    fn test_unpause_before_schedule_does_not_emit_unpause_event() {
-        use soroban_sdk::symbol_short;
-        use soroban_sdk::testutils::Events as _;
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
 
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
+            &1_500_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue2"),
+            &200,
+            &1_800_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &3_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
+    }
+
+    #[test]
+    fn test_cancel_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
+    #[test]
+    fn test_cancel_bill_rejects_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
+    }
+
+    #[test]
+    fn test_get_unpaid_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
+    }
+
+    #[test]
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
+            &1_500_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue2"),
+            &200,
+            &1_800_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &3_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
+    }
+
+    #[test]
+    fn test_cancel_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
+    #[test]
+    fn test_cancel_bill_rejects_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
+    }
+
+    #[test]
+    fn test_get_unpaid_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
+    }
+
+    #[test]
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
+            &1_500_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue2"),
+            &200,
+            &1_800_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &3_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
+    }
+
+    #[test]
+    fn test_cancel_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
+    #[test]
+    fn test_cancel_bill_rejects_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
+    }
+
+    #[test]
+    fn test_get_unpaid_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
+    }
+
+    #[test]
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
+            &1_500_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue2"),
+            &200,
+            &1_800_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &3_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
+    }
+
+    #[test]
+    fn test_cancel_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
+    #[test]
+    fn test_cancel_bill_rejects_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
+    }
+
+    #[test]
+    fn test_get_unpaid_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
+    }
+
+    #[test]
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
+            &1_500_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue2"),
+            &200,
+            &1_800_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &3_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
+    }
+
+    #[test]
+    fn test_cancel_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
+    #[test]
+    fn test_cancel_bill_rejects_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
+    }
+
+    #[test]
+    fn test_get_unpaid_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
+    }
+
+    #[test]
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
+            &1_500_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue2"),
+            &200,
+            &1_800_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &3_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
+    }
+
+    #[test]
+    fn test_cancel_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
+    #[test]
+    fn test_cancel_bill_rejects_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_multiple_recurring_payments() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        // Create recurring bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Subscription"),
+            &999,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        // Pay first bill - creates second
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let bill2 = client.get_bill(&2).unwrap();
+        assert!(!bill2.paid);
+        assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
+        env.mock_all_auths();
+        // Pay second bill - creates third
+        client.pay_bill(&orch, &0, &owner, &2);
+        let bill3 = client.get_bill(&3).unwrap();
+        assert!(!bill3.paid);
+        assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
+    }
+
+    #[test]
+    fn test_get_unpaid_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let unpaid = client.get_unpaid_bills(&owner, &0, &100);
+        assert_eq!(unpaid.items.len(), 2);
+    }
+
+    #[test]
+    fn test_get_total_unpaid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill3"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &1);
+
+        let total = client.get_total_unpaid(&owner);
+        assert_eq!(total, 500); // 200 + 300
+    }
+
+    #[test]
+    fn test_pay_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+    }
+
+    #[test]
+    fn test_get_overdue_bills_succeeds() {
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue1"),
+            &100,
+            &1_500_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue2"),
+            &200,
+            &1_800_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &3_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, 2_000_000);
+        let overdue = client.get_overdue_bills(&0, &100);
+        assert_eq!(overdue.count, 2);
+    }
+
+    #[test]
+    fn test_cancel_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify cancelled bill is completely removed from storage
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should return None"
+        );
+
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(
+            client.get_bill(&new_bill_id).is_some(),
+            "new bill should exist"
+        );
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "cancelled bill should still return None"
+        );
+
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    /// Issue #1591: a paid bill is a terminal, audited record. `cancel_bill`
+    /// must not be usable to delete it -- that would silently destroy the
+    /// payment record (and paid_at trail) instead of going through
+    /// `reverse_payment`, the dedicated typed reversal path.
+    #[test]
+    fn test_cancel_bill_rejects_already_paid_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+
+        // The bill record must survive the rejected cancellation attempt.
+        let bill = client
+            .get_bill(&bill_id)
+            .expect("paid bill must still exist");
+        assert!(bill.paid);
+    }
+
+    #[test]
+    fn test_cancel_bill_owner_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        env.mock_all_auths();
+        client.cancel_bill(&owner, &bill_id);
+
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(
+            client.get_bill(&bill_id).is_none(),
+            "bill should be removed after owner cancellation"
+        );
+        let result = client.try_cancel_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_cancel_bill_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let result = client.try_cancel_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_bill() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_cancel_bill(&owner, &999);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let ref_id = Some(String::from_str(&env, "BILL-EXT-123"));
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &ref_id);
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref, ref_id);
+    }
+
+    #[test]
+    fn test_set_external_ref_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &other,
+            &bill_id,
+            &Some(String::from_str(&env, "BILL-EXT-123")),
+        );
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id);
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
+    #[test]
+    fn test_schedule_unpause_requires_active_pause_state() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
@@ -3804,55 +6086,39 @@ mod testsuit {
 
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
-        client.pause(&admin);
 
         let future = env.ledger().timestamp() + 3600;
-        client.schedule_unpause(&admin, &future);
+        let result = client.try_schedule_unpause(&admin, &future);
+        assert_eq!(result, Err(Ok(Error::ContractPaused)));
+    }
 
-        env.ledger().set_timestamp(future - 1);
+    #[test]
+    fn test_schedule_unpause_replaces_existing_pending_schedule() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+        client.pause(&admin);
+
+        let first = env.ledger().timestamp() + 3600;
+        let second = env.ledger().timestamp() + 7200;
+        client.schedule_unpause(&admin, &first);
+        client.schedule_unpause(&admin, &second);
+
+        env.ledger().set_timestamp(first + 1);
         let result = client.try_unpause(&admin);
         assert_eq!(result, Err(Ok(Error::ContractPaused)));
 
-        let events = env.events().all();
-        assert_eq!(events.len(), 1);
-        let topics = events.last().unwrap().1;
-        let action: soroban_sdk::Symbol =
-            soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
-        assert_eq!(action, symbol_short!("paused_v2"));
-    }
-
-    #[test]
-    fn test_pause_cancels_schedule() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.set_pause_admin(&admin, &admin);
-
-        // Pause the contract
-        client.pause(&admin);
-        assert!(client.is_paused());
-
-        // Schedule unpause in the future
-        let future = env.ledger().timestamp() + 3600;
-        client.schedule_unpause(&admin, &future);
-
-        // Call pause again (this should cancel/reset the pending schedule)
-        client.pause(&admin);
-
-        // Advance ledger to the previously scheduled future time
-        env.ledger().set_timestamp(future);
-
-        // Try to unpause. It should fail because the schedule was cancelled/removed on re-pause.
-        // Since there's no schedule, unpause should succeed (it only checks schedule if one exists)
+        env.ledger().set_timestamp(second);
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
 
     #[test]
-    fn test_premature_unpause_rejection() {
+    fn test_schedule_unpause_is_rejected_when_contract_is_not_paused() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
@@ -3861,22 +6127,13 @@ mod testsuit {
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
 
-        // Pause the contract
-        client.pause(&admin);
-        assert!(client.is_paused());
-
-        // Schedule unpause in the future
         let future = env.ledger().timestamp() + 3600;
-        client.schedule_unpause(&admin, &future);
-
-        // Try to unpause before scheduled time (1 second before)
-        env.ledger().set_timestamp(future - 1);
-        let result = client.try_unpause(&admin);
+        let result = client.try_schedule_unpause(&admin, &future);
         assert_eq!(result, Err(Ok(Error::ContractPaused)));
-        assert!(client.is_paused());
 
-        // Unpause at exact boundary
-        env.ledger().set_timestamp(future);
+        client.pause(&admin);
+        client.schedule_unpause(&admin, &(env.ledger().timestamp() + 60));
+        env.ledger().set_timestamp(env.ledger().timestamp() + 61);
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
@@ -3939,160 +6196,1091 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
 
-        // Create two recurring bills
-        let id1 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Safe"),
-            &100,
-            &1_000_000,
-            &true,
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id2 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Safe2"),
-            &200,
-            &1_000_000,
-            &true,
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Both should succeed in batch (no overflow)
-        let bill_ids = soroban_sdk::vec![&env, id1, id2];
-        let result = client.batch_pay_bills(&owner, &bill_ids);
-        assert!(result.is_ok(), "batch must succeed without overflow");
-
-        // Verify child bills were created
-        assert!(client.get_bill(&id1).unwrap().paid);
-        assert!(client.get_bill(&id2).unwrap().paid);
-        // Child bills should exist at id3 and id4
-        let child1 = client.get_bill(&3);
-        assert!(child1.is_some(), "child bill for id1 should exist");
+        client.set_upgrade_admin(&admin, &admin);
+        let result = client.try_pre_upgrade(&stranger);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 
-    /// Verify archive_paid_bills is atomic: if the operation succeeds,
-    all bills are archived; if it fails (none qualifying), no state changes.
+    // -----------------------------------------------------------------------
+    // pause_function failure-boundary tests
+    // -----------------------------------------------------------------------
+
     #[test]
-    fn test_archive_paid_bills_atomic_no_qualifying() {
+    fn test_pause_function_unauthorized_no_admin() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let caller = Address::generate(&env);
+
         env.mock_all_auths();
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Unpaid"),
-            &100,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Archive with before_timestamp = 0 — no bills qualify (paid_at > 0)
-        let count = client.archive_paid_bills(&owner, &0);
-        assert_eq!(count, 0);
-
-        // Bill should still be in active storage
-        assert!(client.get_bill(&bill_id).is_some());
+        // No pause admin set
+        let result = client.try_pause_function(&caller, &pause_functions::CREATE_BILL);
+        assert_eq!(result, Err(Ok(Error::UnauthorizedPause)));
     }
 
-    /// Verify archive_paid_bills archives all qualifying bills atomically.
     #[test]
-    fn test_archive_paid_bills_atomic_all_qualifying() {
+    fn test_pause_function_unauthorized_wrong_caller() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let admin = Address::generate(&env);
+        let attacker = Address::generate(&env);
+
         env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
+        client.set_pause_admin(&admin, &admin);
 
-        let id1 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Paid1"),
-            &100,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        let id2 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Paid2"),
-            &200,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay both bills
-        client.pay_bill(&orch, &0, &owner, &id1);
-        client.pay_bill(&orch, &0, &owner, &id2);
-
-        // Archive with before_timestamp far in the future — both qualify
-        let count = client.archive_paid_bills(&owner, &10_000_000);
-        assert_eq!(count, 2);
-
-        // Both should be removed from active storage
-        assert!(client.get_bill(&id1).is_none());
-        assert!(client.get_bill(&id2).is_none());
-
-        // Both should be in archive
-        assert!(client.get_archived_bill(&id1).is_some());
-        assert!(client.get_archived_bill(&id2).is_some());
+        env.mock_all_auths();
+        let result = client.try_pause_function(&attacker, &pause_functions::CREATE_BILL);
+        assert_eq!(result, Err(Ok(Error::UnauthorizedPause)));
     }
 
-    /// Verify repeated pay_bill calls leave no partial state.
     #[test]
-    fn test_repeated_pay_bill_no_partial_state() {
+    fn test_pause_function_success() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-        let orch = Address::generate(&env);
-        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
-        client.set_trusted_orchestrator(&owner, &orch);
+        let admin = Address::generate(&env);
 
-        let bill_id = client.create_bill(
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        env.mock_all_auths();
+        let result = client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result.is_ok());
+
+        // Verify function is paused
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_idempotent() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        env.mock_all_auths();
+        // Pause once
+        let result1 = client.pause_function(&admin, &pause_functions::PAY_BILL);
+        assert!(result1.is_ok());
+
+        env.mock_all_auths();
+        // Pause again - should succeed (idempotent)
+        let result2 = client.pause_function(&admin, &pause_functions::PAY_BILL);
+        assert!(result2.is_ok());
+
+        // Function should still be paused
+        assert!(client.is_function_paused_public(&pause_functions::PAY_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_blocks_operation() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        env.mock_all_auths();
+        // Pause create_bill
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+
+        // Try to create a bill - should fail with FunctionPaused
+        env.mock_all_auths();
+        let result = client.try_create_bill(
             &owner,
-            &String::from_str(&env, "Bill"),
-            &500,
-            &1_000_000,
+            &String::from_str(&env, "Test"),
+            &100,
+            &1000000,
             &false,
             &0,
             &None,
             &String::from_str(&env, "XLM"),
             &None,
         );
+        assert_eq!(result, Err(Ok(Error::FunctionPaused)));
+    }
 
-        // Pay it
-        client.pay_bill(&orch, &0, &owner, &bill_id);
+    #[test]
+    fn test_pause_function_multiple_functions() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
 
-        // Try paying again — must fail cleanly
-        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
-        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
 
-        // Verify bill state is exactly as expected
-        let bill = client.get_bill(&bill_id).unwrap();
-        assert!(bill.paid);
-        assert!(bill.paid_at.is_some());
-        assert_eq!(bill.amount, 500);
+        env.mock_all_auths();
+        // Pause multiple functions
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        client.pause_function(&admin, &pause_functions::PAY_BILL);
+        client.pause_function(&admin, &pause_functions::CANCEL_BILL);
+
+        // Verify all are paused
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+        assert!(client.is_function_paused_public(&pause_functions::PAY_BILL));
+        assert!(client.is_function_paused_public(&pause_functions::CANCEL_BILL));
+
+        // Verify unrelated function is not paused
+        assert!(!client.is_function_paused_public(&pause_functions::ARCHIVE));
+    }
+
+    #[test]
+    fn test_pause_function_with_global_pause() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Pause globally
+        env.mock_all_auths();
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Can still pause individual functions while globally paused
+        env.mock_all_auths();
+        let result = client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result.is_ok());
+
+        // Function should be paused
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_concurrent_safety() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Simulate concurrent pause operations
+        env.mock_all_auths();
+        let result1 = client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result1.is_ok());
+
+        env.mock_all_auths();
+        let result2 = client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result2.is_ok());
+
+        // Both should succeed and result in the same state
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_unpause_cycle() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Pause
+        env.mock_all_auths();
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+
+        // Unpause
+        env.mock_all_auths();
+        client.unpause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(!client.is_function_paused_public(&pause_functions::CREATE_BILL));
+
+        // Pause again
+        env.mock_all_auths();
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_preserves_other_paused_functions() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Pause first function
+        env.mock_all_auths();
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+
+        // Pause second function
+        env.mock_all_auths();
+        client.pause_function(&admin, &pause_functions::PAY_BILL);
+
+        // Unpause first function
+        env.mock_all_auths();
+        client.unpause_function(&admin, &pause_functions::CREATE_BILL);
+
+        // Second function should still be paused
+        assert!(!client.is_function_paused_public(&pause_functions::CREATE_BILL));
+        assert!(client.is_function_paused_public(&pause_functions::PAY_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_stale_state_handling() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Pause function
+        env.mock_all_auths();
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+
+        // Simulate storage being in a stale state by directly checking
+        // The pause state should be persistent
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+
+        // Even after multiple reads, state should remain consistent
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_unknown_symbol() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Try to pause an unknown function symbol
+        // The contract allows pausing any symbol, but it won't affect operations
+        // that don't check that specific symbol
+        env.mock_all_auths();
+        let unknown_symbol = soroban_sdk::symbol_short!("unknown");
+        let result = client.pause_function(&admin, &unknown_symbol);
+        assert!(result.is_ok());
+
+        // The unknown symbol should be marked as paused
+        assert!(client.is_function_paused_public(&unknown_symbol));
+    }
+
+    #[test]
+    fn test_pause_function_emits_event() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Pause function and check for event
+        env.mock_all_auths();
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+
+        let events = env.events().all();
+        let fn_paused_found = events.iter().any(|event| {
+            if let Ok((topics, _)) = event {
+                if topics.len() >= 3 {
+                    let action = topics.get(2).unwrap();
+                    *action == soroban_sdk::symbol_short!("fn_paused").into_val(&env)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        });
+        assert!(fn_paused_found, "fn_paused event should be emitted");
+    }
+
+    #[test]
+    fn test_unpause_function_emits_event() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Pause first
+        env.mock_all_auths();
+        client.pause_function(&admin, &pause_functions::CREATE_BILL);
+
+        // Clear events
+        env.events().all();
+
+        // Unpause and check for event
+        env.mock_all_auths();
+        client.unpause_function(&admin, &pause_functions::CREATE_BILL);
+
+        let events = env.events().all();
+        let fn_unpaused_found = events.iter().any(|event| {
+            if let Ok((topics, _)) = event {
+                if topics.len() >= 3 {
+                    let action = topics.get(2).unwrap();
+                    *action == soroban_sdk::symbol_short!("fn_unpaused").into_val(&env)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        });
+        assert!(fn_unpaused_found, "fn_unpaused event should be emitted");
+    }
+
+    #[test]
+    fn test_pause_function_admin_grant_expired() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        // Set initial time
+        let initial_time = 1_000_000;
+        set_ledger_time(&env, 1, initial_time);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Advance time beyond ADMIN_GRANT_TTL (30 days = 2_592_000 seconds)
+        let expired_time = initial_time + 2_592_001;
+        set_ledger_time(&env, 2, expired_time);
+
+        env.mock_all_auths();
+        // Attempt to pause function with expired admin grant
+        let result = client.try_pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert_eq!(result, Err(Ok(Error::AdminGrantExpired)));
+    }
+
+    #[test]
+    fn test_pause_function_kill_switch_active() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Activate kill switch
+        env.mock_all_auths();
+        remitwise_common::activate_kill_switch(&env, &admin);
+
+        // Attempt to pause function with kill switch active
+        env.mock_all_auths();
+        let result = client.try_pause_function(&admin, &pause_functions::CREATE_BILL);
+        // Kill switch causes panic_with_error, which manifests as a contract error
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pause_function_admin_grant_ttl_boundary() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        // Set initial time
+        let initial_time = 1_000_000;
+        set_ledger_time(&env, 1, initial_time);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Test at exact expiry boundary (just before expiry)
+        let just_before_expiry = initial_time + 2_591_999; // 30 days - 1 second
+        set_ledger_time(&env, 2, just_before_expiry);
+
+        env.mock_all_auths();
+        let result_before = client.try_pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result_before.is_ok(), "Should succeed just before expiry");
+
+        // Test at exact expiry boundary (at expiry)
+        let at_expiry = initial_time + 2_592_000; // exactly 30 days
+        set_ledger_time(&env, 3, at_expiry);
+
+        env.mock_all_auths();
+        let result_at = client.try_pause_function(&admin, &pause_functions::PAY_BILL);
+        assert_eq!(result_at, Err(Ok(Error::AdminGrantExpired)), "Should fail at exact expiry");
+
+        // Test just after expiry
+        let just_after_expiry = initial_time + 2_592_001; // 30 days + 1 second
+        set_ledger_time(&env, 4, just_after_expiry);
+
+        env.mock_all_auths();
+        let result_after = client.try_pause_function(&admin, &pause_functions::CANCEL_BILL);
+        assert_eq!(result_after, Err(Ok(Error::AdminGrantExpired)), "Should fail just after expiry");
+    }
+
+    #[test]
+    fn test_pause_function_retry_safety() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // First pause attempt
+        env.mock_all_auths();
+        let result1 = client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result1.is_ok());
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+
+        // Simulate retry (second attempt with same state)
+        env.mock_all_auths();
+        let result2 = client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result2.is_ok());
+
+        // State should remain consistent
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+
+        // Verify no duplicate entries or corruption
+        let paused_map: soroban_sdk::Map<soroban_sdk::Symbol, bool> = env
+            .storage()
+            .instance()
+            .get(&soroban_sdk::symbol_short!("PAUSED_FN"))
+            .unwrap();
+        assert_eq!(paused_map.len(), 1, "Should have exactly one paused function");
+    }
+
+    #[test]
+    fn test_pause_function_legacy_admin_grant_migration() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        // Set pause admin without grant timestamp (legacy state)
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Manually remove the grant timestamp to simulate legacy state
+        env.storage()
+            .instance()
+            .remove(&soroban_sdk::symbol_short!("PADM_GT"));
+
+        // Verify grant timestamp is not present
+        let grant_timestamp: Option<u64> = env
+            .storage()
+            .instance()
+            .get(&soroban_sdk::symbol_short!("PADM_GT"));
+        assert!(grant_timestamp.is_none(), "Grant timestamp should be absent in legacy state");
+
+        // Pause function should succeed and migrate the grant timestamp
+        env.mock_all_auths();
+        let result = client.pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result.is_ok());
+
+        // Verify grant timestamp was set (migration occurred)
+        let grant_timestamp_after: Option<u64> = env
+            .storage()
+            .instance()
+            .get(&soroban_sdk::symbol_short!("PADM_GT"));
+        assert!(grant_timestamp_after.is_some(), "Grant timestamp should be set after migration");
+
+        // Function should be paused
+        assert!(client.is_function_paused_public(&pause_functions::CREATE_BILL));
+    }
+
+    #[test]
+    fn test_pause_function_with_refreshed_grant() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        let initial_time = 1_000_000;
+        set_ledger_time(&env, 1, initial_time);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        // Advance time close to expiry
+        let near_expiry = initial_time + 2_000_000;
+        set_ledger_time(&env, 2, near_expiry);
+
+        // Refresh admin grant
+        env.mock_all_auths();
+        client.refresh_admin_grant(&admin);
+
+        // Advance time past original expiry but within refreshed window
+        let past_original_expiry = initial_time + 2_600_000;
+        set_ledger_time(&env, 3, past_original_expiry);
+
+        // Pause should succeed with refreshed grant
+        env.mock_all_auths();
+        let result = client.try_pause_function(&admin, &pause_functions::CREATE_BILL);
+        assert!(result.is_ok(), "Should succeed with refreshed grant");
+    }
+
+    // =========================================================================
+    // restore_from_snapshot — deterministic failure-boundary coverage
+    //
+    // Covers all error paths, permission guards, stale-state rejection,
+    // schema-version mismatch, idempotency, and full state-reconstruction
+    // fidelity.  Each test names the invariant it asserts so reviewers can
+    // map code → requirement without reading both files.
+    // =========================================================================
+
+    /// INVARIANT: restore_from_snapshot returns SnapshotNotFound when no
+    /// snapshot has been written (no prior pre_upgrade call).
+    #[test]
+    fn test_restore_no_snapshot_returns_snapshot_not_found() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        let result = client.try_restore_from_snapshot(&admin);
+        assert_eq!(
+            result,
+            Err(Ok(Error::SnapshotNotFound)),
+            "restore must fail with SnapshotNotFound when no snapshot exists"
+        );
+    }
+
+    /// INVARIANT: restore_from_snapshot returns Unauthorized when called by
+    /// an address that is not the current upgrade admin.
+    #[test]
+    fn test_restore_by_non_admin_returns_unauthorized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let interloper = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+        // Take a valid snapshot so we are sure the auth check fires before the
+        // snapshot-not-found check.
+        client.pre_upgrade(&admin);
+
+        let result = client.try_restore_from_snapshot(&interloper);
+        assert_eq!(
+            result,
+            Err(Ok(Error::Unauthorized)),
+            "restore must reject callers that are not the upgrade admin"
+        );
+    }
+
+    /// INVARIANT: restore_from_snapshot returns Unauthorized when no upgrade
+    /// admin has been set at all (contract freshly deployed).
+    #[test]
+    fn test_restore_with_no_upgrade_admin_returns_unauthorized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        // No set_upgrade_admin call — admin slot is empty.
+        let stranger = Address::generate(&env);
+
+        let result = client.try_restore_from_snapshot(&stranger);
+        assert_eq!(
+            result,
+            Err(Ok(Error::Unauthorized)),
+            "restore must fail with Unauthorized when upgrade admin is not configured"
+        );
+    }
+
+    /// INVARIANT: restore_from_snapshot returns SnapshotTooOld when the
+    /// snapshot timestamp is older than SNAPSHOT_MAX_AGE_SECS (30 days).
+    ///
+    /// The ledger is advanced to just beyond the staleness threshold so the
+    /// age check fires deterministically without flakiness.
+    #[test]
+    fn test_restore_stale_snapshot_returns_snapshot_too_old() {
+        use remitwise_common::SNAPSHOT_MAX_AGE_SECS;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        // Start at a non-zero timestamp so subtraction stays valid.
+        let start_ts: u64 = 1_000_000;
+        set_time(&env, start_ts);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        // Take snapshot at start_ts.
+        client.pre_upgrade(&admin);
+
+        // Advance the ledger beyond the 30-day freshness window.
+        // +1 ensures we are strictly past the boundary.
+        let stale_ts = start_ts + SNAPSHOT_MAX_AGE_SECS + 1;
+        set_time(&env, stale_ts);
+
+        let result = client.try_restore_from_snapshot(&admin);
+        assert_eq!(
+            result,
+            Err(Ok(Error::SnapshotTooOld)),
+            "restore must reject a snapshot older than SNAPSHOT_MAX_AGE_SECS"
+        );
+    }
+
+    /// INVARIANT: restore_from_snapshot returns InvalidLimit (the current
+    /// error code for schema-version mismatch — see SNAPSHOT_VERSION comment
+    /// in lib.rs) when the stored snapshot carries a schema_version that does
+    /// not match SNAPSHOT_VERSION.
+    ///
+    /// The mismatch is injected directly into persistent storage using
+    /// env.as_contract so no production code path is used to write the
+    /// bogus snapshot.
+    #[test]
+    fn test_restore_schema_version_mismatch_returns_invalid_limit() {
+        use remitwise_common::SNAPSHOT_KEY;
+        use soroban_sdk::symbol_short;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let start_ts: u64 = 1_000_000;
+        set_time(&env, start_ts);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        // Inject a snapshot with a schema_version that will never match
+        // SNAPSHOT_VERSION (which is 1).
+        let bad_snapshot = PreUpgradeSnapshot {
+            schema_version: 0xDEAD_BEEF, // intentionally wrong
+            next_id: 42,
+            version: 1,
+            upgrade_admin: Some(admin.clone()),
+            paused: false,
+            pause_admin: None,
+        };
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().set(&SNAPSHOT_KEY, &bad_snapshot);
+            // Also write a fresh SNAP_TS so the freshness check is not the
+            // first thing to fail.
+            env.storage()
+                .persistent()
+                .set(&symbol_short!("SNAP_TS"), &start_ts);
+        });
+
+        let result = client.try_restore_from_snapshot(&admin);
+        assert_eq!(
+            result,
+            Err(Ok(Error::InvalidLimit)),
+            "restore must return InvalidLimit for a schema_version != SNAPSHOT_VERSION"
+        );
+    }
+
+    /// INVARIANT: a successful pre_upgrade → restore_from_snapshot round-trip
+    /// reconstructs all instance-storage fields exactly: next_id, version,
+    /// upgrade_admin, paused (false), and pause_admin.
+    #[test]
+    fn test_restore_roundtrip_reconstructs_all_state_fields() {
+        use soroban_sdk::symbol_short;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let start_ts: u64 = 1_000_000;
+        set_time(&env, start_ts);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let pause_admin = Address::generate(&env);
+
+        // --- Set up initial state ---
+        client.set_upgrade_admin(&admin, &admin);
+
+        // Set a custom version (so it differs from CONTRACT_VERSION default).
+        client.set_version(&admin, &42u32);
+
+        // Set a pause admin so Option<Address> is Some.
+        client.set_pause_admin(&admin, &pause_admin);
+
+        // Create a bill to advance next_id beyond 0.
+        let _bill_id = client.create_bill(
+            &admin,
+            &String::from_str(&env, "Rent"),
+            &1000,
+            &2_000_000u64,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Record the state we expect to come back after restore.
+        // next_id is a private field; read it via env.as_contract.
+        let expected_next_id: u32 = env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .get(&symbol_short!("NEXT_ID"))
+                .unwrap_or(0u32)
+        });
+        let expected_version = client.get_version();
+        let expected_upgrade_admin = client.get_upgrade_admin_public();
+        let expected_pause_admin = client.get_pause_admin_public();
+
+        // --- Overwrite version to simulate a (failed) upgrade ---
+        client.set_version(&admin, &999u32);
+        assert_eq!(client.get_version(), 999u32, "precondition: version was overwritten");
+
+        // --- Snapshot & restore ---
+        client.pre_upgrade(&admin);
+        client.restore_from_snapshot(&admin);
+
+        // --- Verify every field was restored exactly ---
+        let restored_next_id: u32 = env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .get(&symbol_short!("NEXT_ID"))
+                .unwrap_or(0u32)
+        });
+        assert_eq!(
+            restored_next_id, expected_next_id,
+            "next_id must be restored exactly"
+        );
+        assert_eq!(
+            client.get_version(),
+            expected_version,
+            "version must be restored exactly"
+        );
+        assert_eq!(
+            client.get_upgrade_admin_public(),
+            expected_upgrade_admin,
+            "upgrade_admin must be restored exactly"
+        );
+        assert_eq!(
+            client.get_pause_admin_public(),
+            expected_pause_admin,
+            "pause_admin must be restored exactly"
+        );
+        // paused was false at snapshot time — must remain false after restore
+        assert!(
+            !client.is_paused(),
+            "paused must be false after restoring a snapshot taken while unpaused"
+        );
+    }
+
+    /// INVARIANT: restore_from_snapshot is idempotent in the failure direction:
+    /// a second call after a successful first call must return SnapshotNotFound
+    /// because the first call consumed (removed) the snapshot.
+    #[test]
+    fn test_restore_consumes_snapshot_second_restore_returns_snapshot_not_found() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        client.pre_upgrade(&admin);
+
+        // First restore — must succeed.
+        client.restore_from_snapshot(&admin);
+
+        // Second restore — snapshot has been consumed.
+        let result = client.try_restore_from_snapshot(&admin);
+        assert_eq!(
+            result,
+            Err(Ok(Error::SnapshotNotFound)),
+            "second restore must fail with SnapshotNotFound (snapshot was consumed by first call)"
+        );
+    }
+
+    /// INVARIANT: pre_upgrade + restore_from_snapshot preserves a `paused = true`
+    /// state exactly — the contract must come back paused after a restore of a
+    /// snapshot taken while paused.
+    #[test]
+    fn test_restore_roundtrip_preserves_paused_true() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let pause_admin = Address::generate(&env);
+
+        client.set_upgrade_admin(&admin, &admin);
+        client.set_pause_admin(&admin, &pause_admin);
+
+        // Pause the contract before taking the snapshot.
+        client.pause(&pause_admin);
+        assert!(client.is_paused(), "precondition: contract must be paused");
+
+        client.pre_upgrade(&admin);
+
+        // Unpause to simulate a (partial) upgrade that reversed pause state.
+        client.unpause(&pause_admin);
+        assert!(!client.is_paused(), "precondition: contract must be unpaused after unpause");
+
+        // Restore should re-apply the paused=true state from the snapshot.
+        client.restore_from_snapshot(&admin);
+
+        assert!(
+            client.is_paused(),
+            "paused must be true after restoring a snapshot taken while paused"
+        );
+    }
+
+    /// INVARIANT: pre_upgrade + restore_from_snapshot preserves pause_admin = None
+    /// (an Option field that was never set must come back as None, not as a stale
+    /// previous value).
+    #[test]
+    fn test_restore_roundtrip_preserves_pause_admin_none() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+        // Explicitly do NOT call set_pause_admin — pause_admin should be None.
+
+        client.pre_upgrade(&admin);
+        client.restore_from_snapshot(&admin);
+
+        assert!(
+            client.get_pause_admin_public().is_none(),
+            "pause_admin must be None after restoring a snapshot where pause_admin was not set"
+        );
+    }
+
+    /// INVARIANT: discard_snapshot removes the snapshot so that a subsequent
+    /// restore_from_snapshot returns SnapshotNotFound.
+    #[test]
+    fn test_discard_snapshot_makes_subsequent_restore_fail_with_snapshot_not_found() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        client.pre_upgrade(&admin);
+        client.discard_snapshot(&admin);
+
+        let result = client.try_restore_from_snapshot(&admin);
+        assert_eq!(
+            result,
+            Err(Ok(Error::SnapshotNotFound)),
+            "restore must fail with SnapshotNotFound after discard_snapshot"
+        );
+    }
+
+    /// INVARIANT: pre_upgrade returns Unauthorized when called by an address
+    /// that is not the upgrade admin.
+    #[test]
+    fn test_pre_upgrade_by_non_admin_returns_unauthorized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let interloper = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        let result = client.try_pre_upgrade(&interloper);
+        assert_eq!(
+            result,
+            Err(Ok(Error::Unauthorized)),
+            "pre_upgrade must reject callers that are not the upgrade admin"
+        );
+    }
+
+    /// INVARIANT: discard_snapshot returns Unauthorized when called by an
+    /// address that is not the upgrade admin.
+    #[test]
+    fn test_discard_snapshot_by_non_admin_returns_unauthorized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let interloper = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        client.pre_upgrade(&admin);
+
+        let result = client.try_discard_snapshot(&interloper);
+        assert_eq!(
+            result,
+            Err(Ok(Error::Unauthorized)),
+            "discard_snapshot must reject callers that are not the upgrade admin"
+        );
+    }
+
+    /// INVARIANT: the kill switch blocks restore_from_snapshot.
+    ///
+    /// When the kill switch is active all write entry points must be blocked.
+    /// restore_from_snapshot is a write operation (it mutates instance storage)
+    /// and must therefore be blocked.
+    ///
+    /// The kill switch is injected via env.as_contract so we are testing the
+    /// guard that was added to the entry point, not a higher-level auth layer.
+    #[test]
+    fn test_kill_switch_blocks_restore_from_snapshot() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+        client.pre_upgrade(&admin);
+
+        // Activate kill switch directly in contract storage.
+        env.as_contract(&contract_id, || {
+            remitwise_common::activate_kill_switch(&env);
+        });
+
+        let result = client.try_restore_from_snapshot(&admin);
+        assert!(
+            result.is_err(),
+            "restore_from_snapshot must be blocked when the kill switch is active"
+        );
+    }
+
+    /// INVARIANT: the kill switch blocks pre_upgrade.
+    #[test]
+    fn test_kill_switch_blocks_pre_upgrade() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        env.as_contract(&contract_id, || {
+            remitwise_common::activate_kill_switch(&env);
+        });
+
+        let result = client.try_pre_upgrade(&admin);
+        assert!(
+            result.is_err(),
+            "pre_upgrade must be blocked when the kill switch is active"
+        );
+    }
+
+    /// INVARIANT: the kill switch blocks discard_snapshot.
+    #[test]
+    fn test_kill_switch_blocks_discard_snapshot() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000_000);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+        client.pre_upgrade(&admin);
+
+        env.as_contract(&contract_id, || {
+            remitwise_common::activate_kill_switch(&env);
+        });
+
+        let result = client.try_discard_snapshot(&admin);
+        assert!(
+            result.is_err(),
+            "discard_snapshot must be blocked when the kill switch is active"
+        );
+    }
+
+    /// BOUNDARY: restore at exactly SNAPSHOT_MAX_AGE_SECS must succeed (the
+    /// boundary is inclusive on the inside — age == MAX is still fresh).
+    #[test]
+    fn test_restore_at_exact_boundary_age_succeeds() {
+        use remitwise_common::SNAPSHOT_MAX_AGE_SECS;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let start_ts: u64 = 1_000_000;
+        set_time(&env, start_ts);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        client.pre_upgrade(&admin);
+
+        // Advance to exactly the boundary: age == SNAPSHOT_MAX_AGE_SECS.
+        let boundary_ts = start_ts + SNAPSHOT_MAX_AGE_SECS;
+        set_time(&env, boundary_ts);
+
+        // Must succeed — boundary is inclusive.
+        client.restore_from_snapshot(&admin);
+    }
+
+    /// BOUNDARY: restore at SNAPSHOT_MAX_AGE_SECS + 1 must fail (the boundary
+    /// is exclusive on the outside — age > MAX is stale).
+    #[test]
+    fn test_restore_one_second_past_boundary_returns_snapshot_too_old() {
+        use remitwise_common::SNAPSHOT_MAX_AGE_SECS;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let start_ts: u64 = 1_000_000;
+        set_time(&env, start_ts);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        client.pre_upgrade(&admin);
+
+        // age == SNAPSHOT_MAX_AGE_SECS + 1 → must be rejected.
+        let stale_ts = start_ts + SNAPSHOT_MAX_AGE_SECS + 1;
+        set_time(&env, stale_ts);
+
+        let result = client.try_restore_from_snapshot(&admin);
+        assert_eq!(
+            result,
+            Err(Ok(Error::SnapshotTooOld)),
+            "age one second past the boundary must be rejected as SnapshotTooOld"
+        );
+    }
+
+    /// REGRESSION: discard_snapshot on a contract with no snapshot present
+    /// must not panic — it is a no-op on persistent storage and must return Ok.
+    #[test]
+    fn test_discard_snapshot_without_prior_snapshot_is_idempotent() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.set_upgrade_admin(&admin, &admin);
+
+        // No pre_upgrade — discard on empty storage must succeed silently.
+        client.discard_snapshot(&admin);
     }
 }

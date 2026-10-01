@@ -30,7 +30,8 @@
 //! 10. **Overflow safety** – `i128` totals are never corrupted by cleanup.
 
 use bill_payments::{
-    BillPayments, BillPaymentsClient, BillPaymentsError, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+    pause_functions, BillPayments, BillPaymentsClient, BillPaymentsError,
+    DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
 };
 use remitwise_common::MAX_AMOUNT;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
@@ -616,4 +617,68 @@ fn test_cleanup_blocked_when_contract_paused() {
         Err(Ok(BillPaymentsError::ContractPaused)),
         "bulk_cleanup_bills must return ContractPaused when contract is paused"
     );
+}
+
+/// The archive pause guard returns stable errors before cleanup can remove
+/// eligible archived bills. Global pause takes precedence over function pause.
+#[test]
+fn test_cleanup_pause_guard_failure_boundaries_are_deterministic() {
+    let env = make_env();
+    let (client, owner) = setup(&env);
+    let orchestrator = setup_orchestrator(&client, &owner);
+    let ids = create_unpaid_bills(&env, &client, &owner, 1, 100);
+    client.pay_bill(&orchestrator, &0, &owner, &ids[0]);
+    assert_eq!(client.archive_paid_bills(&owner, &u64::MAX), 1);
+    client.set_pause_admin(&owner, &owner);
+
+    // Unpaused globally and for ARCHIVE: cleanup reaches its mutation path.
+    assert_eq!(client.try_bulk_cleanup_bills(&owner, &u64::MAX), Ok(Ok(1)));
+    assert!(client.get_archived_bill(&ids[0]).is_none());
+
+    // Recreate an eligible archived record for the three rejected boundaries.
+    let next_ids = create_unpaid_bills(&env, &client, &owner, 1, 100);
+    client.pay_bill(&orchestrator, &0, &owner, &next_ids[0]);
+    assert_eq!(client.archive_paid_bills(&owner, &u64::MAX), 1);
+    let assert_archive_untouched = || {
+        assert_eq!(client.get_archived_bills(&owner, &0, &10).count, 1);
+        assert!(client.get_archived_bill(&next_ids[0]).is_some());
+        assert_eq!(client.get_storage_stats().archived_bills, 1);
+    };
+
+    // Global pause only: identical errors on retry, with no cleanup mutation.
+    client.pause(&owner);
+    for _ in 0..2 {
+        assert_eq!(
+            client.try_bulk_cleanup_bills(&owner, &u64::MAX),
+            Err(Ok(BillPaymentsError::ContractPaused))
+        );
+        assert_archive_untouched();
+    }
+
+    client.unpause(&owner);
+    client.pause_function(&owner, pause_functions::ARCHIVE);
+    // ARCHIVE pause only: identical errors on retry, with no cleanup mutation.
+    for _ in 0..2 {
+        assert_eq!(
+            client.try_bulk_cleanup_bills(&owner, &u64::MAX),
+            Err(Ok(BillPaymentsError::FunctionPaused))
+        );
+        assert_archive_untouched();
+    }
+
+    // Both pauses are active: global pause must win on every attempt.
+    client.pause(&owner);
+    for _ in 0..2 {
+        assert_eq!(
+            client.try_bulk_cleanup_bills(&owner, &u64::MAX),
+            Err(Ok(BillPaymentsError::ContractPaused))
+        );
+        assert_archive_untouched();
+    }
+
+    // Once both guards are cleared, the previously blocked operation succeeds.
+    client.unpause(&owner);
+    client.unpause_function(&owner, pause_functions::ARCHIVE);
+    assert_eq!(client.try_bulk_cleanup_bills(&owner, &u64::MAX), Ok(Ok(1)));
+    assert!(client.get_archived_bill(&next_ids[0]).is_none());
 }
