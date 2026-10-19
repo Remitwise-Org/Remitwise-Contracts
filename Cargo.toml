@@ -11,6 +11,7 @@ publish = false
 [workspace]
 members = [
     "emergency_killswitch",
+    "bill_payments",
     "family_wallet",
     "data_migration",
     "reporting",
@@ -22,7 +23,6 @@ members = [
     "remitwise-common",
 ]
 exclude = [
-    "bill_payments",
     "insurance",
     "remittance_split",
     "savings_goals",
