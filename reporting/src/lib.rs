@@ -367,12 +367,30 @@ pub struct DependencyStatus {
     pub error_category: Option<soroban_sdk::String>,
 }
 
+/// Mirror of the real `remittance_split::SplitConfig`.
+///
+/// Field names, order and types MUST match `SplitConfig` in
+/// `remittance_split/src/lib.rs` exactly so the value returned by
+/// `get_config` decodes without a `ConversionError`.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SplitConfig {
+    pub owner: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
+    pub timestamp: u64,
+    pub initialized: bool,
+    pub usdc_contract: Address,
+}
+
 // Client traits for cross-contract calls
 
 #[contractclient(name = "RemittanceSplitClient")]
 pub trait RemittanceSplitTrait {
-    fn get_split(env: &Env) -> Vec<u32>;
-    fn calculate_split(env: Env, total_amount: i128) -> Vec<i128>;
+    fn get_split(env: &Env, orchestrator: Address, epoch: u64) -> Vec<u32>;
+    fn get_config(env: Env) -> Option<SplitConfig>;
 }
 
 #[contractclient(name = "SavingsGoalsClient")]
@@ -1059,7 +1077,7 @@ impl ReportingContract {
 
         // Check remittance_split
         let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
-        let split_ok = matches!(split_client.try_get_split(), Ok(Ok(_)));
+        let split_ok = matches!(split_client.try_get_config(), Ok(Ok(_)));
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "remittance_split"),
             ok: split_ok,
@@ -1181,8 +1199,15 @@ impl ReportingContract {
         let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);
         let mut availability = DataAvailability::Complete;
 
-        let split_percentages = match split_client.try_get_split() {
-            Ok(Ok(res)) => res,
+        let split_percentages = match split_client.try_get_config() {
+            Ok(Ok(Some(cfg))) => soroban_sdk::vec![
+                env,
+                cfg.spending_percent,
+                cfg.savings_percent,
+                cfg.bills_percent,
+                cfg.insurance_percent
+            ],
+            // `None` (split_not_configured) or any call/decode failure.
             _ => {
                 availability = DataAvailability::Partial;
                 Vec::new(env)
@@ -1203,7 +1228,10 @@ impl ReportingContract {
                 }
 
                 // Percentages are basis points; divide by 10_000 (100.00%).
-                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 10_000;
+                let amount = total_amount
+                    .checked_mul(p as i128)
+                    .ok_or(ReportingError::Overflow)?
+                    / 10_000;
                 split_amounts.push_back(amount);
             }
 

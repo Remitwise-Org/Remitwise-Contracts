@@ -21,29 +21,76 @@ fn create_test_env() -> Env {
 
 // Mock contracts for testing
 mod remittance_split {
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
+    use crate::SplitConfig;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Vec};
 
     #[contract]
     pub struct RemittanceSplit;
 
     #[contractimpl]
     impl RemittanceSplit {
-        pub fn get_split(env: &Env) -> Vec<u32> {
+        /// Test helper: store the trusted orchestrator that `get_split` requires.
+        pub fn set_trusted(env: Env, orchestrator: Address) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("TRUSTED"), &orchestrator);
+        }
+
+        /// Test helper: override the configured basis-point split.
+        pub fn set_percents(env: Env, a: u32, b: u32, c: u32, d: u32) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("PCTS"), &(a, b, c, d));
+        }
+
+        /// Test helper: when `false`, `get_config` returns `None`.
+        pub fn set_configured(env: Env, configured: bool) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("CONFIGD"), &configured);
+        }
+
+        /// Current provider ABI: guarded read; panics unless `orchestrator`
+        /// is the stored trusted address.
+        pub fn get_split(env: &Env, orchestrator: Address, _epoch: u64) -> Vec<u32> {
+            let trusted: Option<Address> = env.storage().instance().get(&symbol_short!("TRUSTED"));
+            if trusted != Some(orchestrator) {
+                panic!("untrusted orchestrator");
+            }
             let mut split = Vec::new(env);
-            split.push_back(5000);
+            split.push_back(4000);
             split.push_back(3000);
-            split.push_back(1500);
-            split.push_back(500);
+            split.push_back(2000);
+            split.push_back(1000);
             split
         }
 
-        pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
-            let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 5000 / 10000);
-            amounts.push_back(total_amount * 3000 / 10000);
-            amounts.push_back(total_amount * 1500 / 10000);
-            amounts.push_back(total_amount * 500 / 10000);
-            amounts
+        /// Current provider ABI: unguarded public view.
+        pub fn get_config(env: Env) -> Option<SplitConfig> {
+            let configured: bool = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("CONFIGD"))
+                .unwrap_or(true);
+            if !configured {
+                return None;
+            }
+            let p: (u32, u32, u32, u32) = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("PCTS"))
+                .unwrap_or((5000, 3000, 1500, 500));
+            Some(SplitConfig {
+                owner: Address::generate(&env),
+                spending_percent: p.0,
+                savings_percent: p.1,
+                bills_percent: p.2,
+                insurance_percent: p.3,
+                timestamp: 0,
+                initialized: true,
+                usdc_contract: Address::generate(&env),
+            })
         }
     }
 }
@@ -1080,15 +1127,16 @@ fn test_get_remittance_summary_missing_addresses() {
 }
 
 mod failing_remittance_split {
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
+    use crate::SplitConfig;
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
     #[contract]
     pub struct FailingRemittanceSplit;
     #[contractimpl]
     impl FailingRemittanceSplit {
-        pub fn get_split(_env: &Env) -> Vec<u32> {
+        pub fn get_split(_env: &Env, _orchestrator: Address, _epoch: u64) -> Vec<u32> {
             panic!("Remote call failing to simulate Partial Data");
         }
-        pub fn calculate_split(_env: Env, _total_amount: i128) -> Vec<i128> {
+        pub fn get_config(_env: Env) -> Option<SplitConfig> {
             panic!("Remote call failing to simulate Partial Data");
         }
     }
@@ -3843,4 +3891,117 @@ fn test_top_n_reports() {
     assert_eq!(savings_report.items.len(), 2);
     assert_eq!(savings_report.items.get(0).unwrap().target_amount, 10000);
     assert_eq!(savings_report.items.get(1).unwrap().target_amount, 5000);
+}
+
+// ============================================================================
+// remittance_split ABI regression tests (current provider API: get_config)
+// ============================================================================
+
+fn setup_split_abi(
+    env: &Env,
+) -> (
+    ReportingContractClient<'_>,
+    remittance_split::RemittanceSplitClient<'_>,
+    Address,
+) {
+    env.mock_all_auths();
+    set_ledger_time(env, 1, 1704067200);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    client.init(&admin);
+
+    let split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let split = remittance_split::RemittanceSplitClient::new(env, &split_id);
+    // The provider's guarded `get_split` is only reachable by the trusted
+    // orchestrator; reporting is NOT trusted and must not rely on it.
+    split.set_trusted(&Address::generate(env));
+
+    let savings_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bills_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet = Address::generate(env);
+    client.configure_addresses(
+        &admin,
+        &split_id,
+        &savings_id,
+        &bills_id,
+        &insurance_id,
+        &family_wallet,
+    );
+    (client, split, admin)
+}
+
+#[test]
+fn summary_complete_with_current_split_api() {
+    let env = Env::default();
+    let (client, split, _admin) = setup_split_abi(&env);
+    split.set_percents(&4000, &3000, &2000, &1000);
+    let user = Address::generate(&env);
+
+    let summary = client.get_remittance_summary(&user, &10_000, &0, &100);
+
+    assert_eq!(summary.data_availability, DataAvailability::Complete);
+    let expected = [4000i128, 3000, 2000, 1000];
+    assert_eq!(summary.category_breakdown.len(), 4);
+    for i in 0..4u32 {
+        let b = summary.category_breakdown.get(i).unwrap();
+        assert_eq!(b.amount, expected[i as usize]);
+        assert_eq!(b.percentage as i128, expected[i as usize]);
+    }
+}
+
+#[test]
+fn summary_partial_when_split_unconfigured() {
+    let env = Env::default();
+    let (client, split, _admin) = setup_split_abi(&env);
+    split.set_configured(&false);
+    let user = Address::generate(&env);
+
+    let summary = client.get_remittance_summary(&user, &10_000, &0, &100);
+
+    assert_eq!(summary.data_availability, DataAvailability::Partial);
+    for i in 0..summary.category_breakdown.len() {
+        assert_eq!(summary.category_breakdown.get(i).unwrap().amount, 0);
+    }
+}
+
+#[test]
+fn check_dependencies_reports_split_healthy() {
+    let env = Env::default();
+    let (client, _split, admin) = setup_split_abi(&env);
+
+    let statuses = client.check_dependencies(&admin);
+
+    let split_status = statuses.get(0).unwrap();
+    assert!(split_status.ok);
+    assert!(split_status.error_category.is_none());
+}
+
+#[test]
+fn summary_overflow_is_an_error() {
+    let env = Env::default();
+    let (client, split, _admin) = setup_split_abi(&env);
+    split.set_percents(&10_000, &0, &0, &0);
+    let user = Address::generate(&env);
+
+    let result = client.try_get_remittance_summary(&user, &i128::MAX, &0, &100);
+
+    assert!(matches!(result, Err(Ok(ReportingError::Overflow))));
+}
+
+#[test]
+fn split_config_mirror_decodes_real_shape() {
+    let env = Env::default();
+    let (_client, split, _admin) = setup_split_abi(&env);
+    let addrs = _client.get_addresses();
+    let raw = crate::RemittanceSplitClient::new(&env, &addrs.unwrap().remittance_split);
+
+    let cfg = raw.try_get_config();
+
+    let decoded = cfg.expect("no ConversionError").expect("no invoke error");
+    let decoded = decoded.expect("configured");
+    assert!(decoded.initialized);
+    assert_eq!(decoded.spending_percent, 5000);
+    let _ = split;
 }
