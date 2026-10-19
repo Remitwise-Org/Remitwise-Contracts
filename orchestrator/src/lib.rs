@@ -388,6 +388,9 @@ pub enum OrchestratorError {
     SnapshotTooOld = 14,
     /// The actor epoch does not match the contract's current epoch.
     EpochMismatch = 15,
+    /// A configured downstream rejected an epoch bump or reported an
+    /// unexpected epoch after the bump.
+    DownstreamEpochBumpFailed = 16,
 }
 
 #[contract]
@@ -1078,9 +1081,13 @@ impl Orchestrator {
     ///
     /// # Errors
     /// - `Unauthorized` if caller is not the owner
+    /// - `DownstreamEpochBumpFailed` if a configured downstream rejects the
+    ///   bump or reports an epoch other than the new orchestrator epoch
     ///
     /// # Events
-    /// Emits `(symbol_short!("orch"), symbol_short!("epoch_bump"))` with (old_epoch, new_epoch).
+    /// Emits `(symbol_short!("orch"), symbol_short!("epch_bump"))` with (old_epoch, new_epoch).
+    /// On downstream failure, publishes `("orch", "epch_fail")` with the
+    /// failing downstream step symbol before the transaction reverts.
     pub fn bump_actor_epoch(env: Env, caller: Address) -> Result<u64, OrchestratorError> {
         caller.require_auth();
 
@@ -1103,15 +1110,9 @@ impl Orchestrator {
 
         env.storage().instance().set(&ACTOR_EPOCH, &new_epoch);
 
-        // Coordinated, atomic downstream bump. Each downstream contract stores
-        // its own `XC_EPOCH` and validates that *this* orchestrator is its
-        // trusted orchestrator before advancing it. Driving every downstream
-        // bump inside this single transaction keeps all cross-contract epochs
-        // in lockstep with the orchestrator's actor epoch — if any downstream
-        // is mis-configured (no trusted orchestrator set) or missing, its bump
-        // panics and the whole transaction reverts (fail-safe), so epochs can
-        // never drift out of sync.
-        Self::coordinated_bump_downstream_epochs(&env);
+        // Strict lockstep is required: a downstream bump failure must revert
+        // this write and every earlier downstream bump in the transaction.
+        Self::coordinated_bump_downstream_epochs(&env, new_epoch)?;
 
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("epch_bump")),
@@ -1121,36 +1122,122 @@ impl Orchestrator {
         Ok(new_epoch)
     }
 
-    /// Advance the cross-contract epoch on every configured downstream contract.
+    /// Advance and verify every configured downstream epoch in strict lockstep.
     ///
-    /// Called from `bump_actor_epoch` so the orchestrator's actor epoch and each
-    /// downstream `XC_EPOCH` stay in lockstep. In production every downstream
-    /// contract implements the epoch interface and bumps its own `XC_EPOCH`,
-    /// keeping all epochs consistent. We call `try_` and ignore individual
-    /// failures so that a downstream which has not (yet) adopted the epoch
-    /// interface does not hard-abort the coordinated bump; callers that depend
-    /// on strict epoch enforcement should ensure all downstreams are upgraded.
-    fn coordinated_bump_downstream_epochs(env: &Env) {
+    /// Any failed invocation or incorrect read-back returns an error. Because
+    /// this runs in the `bump_actor_epoch` transaction, the error reverts the
+    /// orchestrator epoch and all earlier downstream writes as well.
+    fn coordinated_bump_downstream_epochs(
+        env: &Env,
+        expected_epoch: u64,
+    ) -> Result<(), OrchestratorError> {
         let orch = env.current_contract_address();
 
         if let Some(addr) = env.storage().instance().get(&symbol_short!("FW_ADDR")) {
-            let _ =
-                interface::FamilyWalletClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let client = interface::FamilyWalletClient::new(env, &addr);
+            if client.try_bump_cross_contract_epoch(&orch).is_err()
+                || !matches!(
+                    client.try_get_cross_contract_epoch(),
+                    Ok(Ok(epoch)) if epoch == expected_epoch
+                )
+            {
+                return Self::fail_downstream_epoch_bump(env, symbol_short!("family"));
+            }
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("RS_ADDR")) {
-            let _ = interface::RemittanceSplitClient::new(env, &addr)
-                .try_bump_cross_contract_epoch(&orch);
+            let client = interface::RemittanceSplitClient::new(env, &addr);
+            if client.try_bump_cross_contract_epoch(&orch).is_err()
+                || !matches!(
+                    client.try_get_cross_contract_epoch(),
+                    Ok(Ok(epoch)) if epoch == expected_epoch
+                )
+            {
+                return Self::fail_downstream_epoch_bump(env, symbol_short!("split"));
+            }
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("SG_ADDR")) {
-            let _ = interface::SavingsGoalsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let client = interface::SavingsGoalsClient::new(env, &addr);
+            if client.try_bump_cross_contract_epoch(&orch).is_err()
+                || !matches!(
+                    client.try_get_cross_contract_epoch(),
+                    Ok(Ok(epoch)) if epoch == expected_epoch
+                )
+            {
+                return Self::fail_downstream_epoch_bump(env, symbol_short!("savings"));
+            }
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("BP_ADDR")) {
-            let _ = interface::BillPaymentsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let client = interface::BillPaymentsClient::new(env, &addr);
+            if client.try_bump_cross_contract_epoch(&orch).is_err()
+                || !matches!(
+                    client.try_get_cross_contract_epoch(),
+                    Ok(Ok(epoch)) if epoch == expected_epoch
+                )
+            {
+                return Self::fail_downstream_epoch_bump(env, symbol_short!("bills"));
+            }
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("INS_ADDR")) {
-            let _ =
-                interface::InsuranceClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let client = interface::InsuranceClient::new(env, &addr);
+            if client.try_bump_cross_contract_epoch(&orch).is_err()
+                || !matches!(
+                    client.try_get_cross_contract_epoch(),
+                    Ok(Ok(epoch)) if epoch == expected_epoch
+                )
+            {
+                return Self::fail_downstream_epoch_bump(env, symbol_short!("insur"));
+            }
         }
+
+        Ok(())
+    }
+
+    fn fail_downstream_epoch_bump(env: &Env, step: Symbol) -> Result<(), OrchestratorError> {
+        env.events()
+            .publish((symbol_short!("orch"), symbol_short!("epch_fail")), step);
+        Err(OrchestratorError::DownstreamEpochBumpFailed)
+    }
+
+    /// Return the orchestrator epoch and each configured downstream epoch.
+    ///
+    /// This read-only status view lets operators identify epoch drift without
+    /// attempting a state-changing flow.
+    pub fn get_epoch_status(env: Env) -> Vec<(Symbol, u64)> {
+        let mut status = Vec::new(&env);
+        status.push_back((symbol_short!("orch"), Self::get_actor_epoch(&env)));
+
+        if let Some(addr) = env.storage().instance().get(&symbol_short!("FW_ADDR")) {
+            status.push_back((
+                symbol_short!("family"),
+                interface::FamilyWalletClient::new(&env, &addr).get_cross_contract_epoch(),
+            ));
+        }
+        if let Some(addr) = env.storage().instance().get(&symbol_short!("RS_ADDR")) {
+            status.push_back((
+                symbol_short!("split"),
+                interface::RemittanceSplitClient::new(&env, &addr).get_cross_contract_epoch(),
+            ));
+        }
+        if let Some(addr) = env.storage().instance().get(&symbol_short!("SG_ADDR")) {
+            status.push_back((
+                symbol_short!("savings"),
+                interface::SavingsGoalsClient::new(&env, &addr).get_cross_contract_epoch(),
+            ));
+        }
+        if let Some(addr) = env.storage().instance().get(&symbol_short!("BP_ADDR")) {
+            status.push_back((
+                symbol_short!("bills"),
+                interface::BillPaymentsClient::new(&env, &addr).get_cross_contract_epoch(),
+            ));
+        }
+        if let Some(addr) = env.storage().instance().get(&symbol_short!("INS_ADDR")) {
+            status.push_back((
+                symbol_short!("insur"),
+                interface::InsuranceClient::new(&env, &addr).get_cross_contract_epoch(),
+            ));
+        }
+
+        status
     }
 
     /// Get the current actor epoch.

@@ -63,6 +63,11 @@ This document provides a STRIDE-style threat analysis for the Remitwise smart co
 
 ### 4. Orchestrator Contract (`orchestrator`)
 
+#### Entrypoint: `bump_actor_epoch`
+| Threat | Description | Mitigation |
+|--------|-------------|------------|
+| Tampering | A missing, stale, or mis-configured downstream rejects an epoch bump, leaving contract epochs inconsistent and causing later signed flows to fail | Bump all five configured downstreams in the same transaction, verify every reported epoch against the new orchestrator epoch, and return `DownstreamEpochBumpFailed` on any invocation/read-back failure so the whole transaction reverts. Operators can inspect `get_epoch_status()` for drift. |
+
 #### Entrypoint: `execute_remittance_flow`
 | Threat | Description | Mitigation |
 |--------|-------------|------------|
