@@ -24,7 +24,7 @@ mod interface {
             user: Address,
             amount: i128,
         ) -> bool;
-        fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
+        fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64;
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
 
@@ -37,7 +37,7 @@ mod interface {
             total_amount: i128,
         ) -> Vec<i128>;
         fn get_split(env: Env, orchestrator: Address, epoch: u64) -> Vec<u32>;
-        fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
+        fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64;
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
 
@@ -50,22 +50,22 @@ mod interface {
             caller: Address,
             goal_id: u32,
             amount: i128,
-        );
-        fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
+        ) -> i128;
+        fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64;
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
         fn pay_bill(env: Env, orchestrator: Address, epoch: u64, caller: Address, bill_id: u32);
-        fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
+        fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64;
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, orchestrator: Address, epoch: u64, caller: Address, policy_id: u32);
-        fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
+        fn pay_premium(env: Env, orchestrator: Address, epoch: u64, caller: Address, policy_id: u32) -> bool;
+        fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64;
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
 
@@ -83,7 +83,7 @@ mod interface {
             user: Address,
             goal_id: u32,
             amount: i128,
-        );
+        ) -> bool;
     }
 
     #[contractclient(name = "BillPaymentsCompClient")]
@@ -95,7 +95,7 @@ mod interface {
             user: Address,
             bill_id: u32,
             amount: i128,
-        );
+        ) -> bool;
     }
 
     #[contractclient(name = "InsuranceCompClient")]
@@ -107,7 +107,7 @@ mod interface {
             user: Address,
             policy_id: u32,
             amount: i128,
-        );
+        ) -> bool;
     }
 
     /// External token contract interface used by `claim_rewards_summary_external`.
@@ -348,6 +348,34 @@ impl FlowRouting {
                 .get(&symbol_short!("POL_ID"))
                 .unwrap_or(1),
         })
+    }
+}
+
+/// Classification of a downstream cross-contract call result.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum StepOutcome {
+    /// The call succeeded and returned a valid decoded value.
+    Success,
+    /// The callee contract rejected the invocation (contract error or false return).
+    ContractRejection,
+    /// An invocation failure (missing contract, panic) or ABI decoding error.
+    InvocationFailure,
+}
+
+fn classify_call<T, E1, E2, E3>(r: Result<Result<T, E1>, Result<E2, E3>>) -> StepOutcome {
+    match r {
+        Ok(Ok(_)) => StepOutcome::Success,
+        Err(Ok(_)) => StepOutcome::ContractRejection,
+        Err(Err(_)) | Ok(Err(_)) => StepOutcome::InvocationFailure,
+    }
+}
+
+fn classify_premium<E1, E2, E3>(r: Result<Result<bool, E1>, Result<E2, E3>>) -> StepOutcome {
+    match r {
+        Ok(Ok(true)) => StepOutcome::Success,
+        Ok(Ok(false)) => StepOutcome::ContractRejection,
+        Err(Ok(_)) => StepOutcome::ContractRejection,
+        Err(Err(_)) | Ok(Err(_)) => StepOutcome::InvocationFailure,
     }
 }
 
@@ -781,16 +809,17 @@ impl Orchestrator {
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        // --- #1345: use .is_ok() so succeeded=true when the call succeeds -----
-        let s_ok = interface::SavingsGoalsClient::new(&env, &routing.savings)
-            .try_add_to_goal(&orch, &epoch, &executor, &routing.goal_id, &savings_amt)
-            .is_ok();
-        let b_ok = interface::BillPaymentsClient::new(&env, &routing.bills)
-            .try_pay_bill(&orch, &epoch, &executor, &routing.bill_id)
-            .is_ok();
-        let i_ok = interface::InsuranceClient::new(&env, &routing.insurance)
-            .try_pay_premium(&orch, &epoch, &executor, &routing.policy_id)
-            .is_ok();
+        let s_res = interface::SavingsGoalsClient::new(&env, &routing.savings)
+            .try_add_to_goal(&orch, &epoch, &executor, &routing.goal_id, &savings_amt);
+        let s_ok = matches!(classify_call(s_res), StepOutcome::Success);
+
+        let b_res = interface::BillPaymentsClient::new(&env, &routing.bills)
+            .try_pay_bill(&orch, &epoch, &executor, &routing.bill_id);
+        let b_ok = matches!(classify_call(b_res), StepOutcome::Success);
+
+        let i_res = interface::InsuranceClient::new(&env, &routing.insurance)
+            .try_pay_premium(&orch, &epoch, &executor, &routing.policy_id);
+        let i_ok = matches!(classify_premium(i_res), StepOutcome::Success);
 
         let savings = FanOutStepResult {
             step: FlowStep::SavingsGoal,
@@ -1552,13 +1581,14 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            match s_client.try_add_to_goal(&orch, &epoch, caller, &routing.goal_id, &savings_amt) {
-                Ok(Ok(_)) => savings_done = true,
-                Ok(Err(_)) => {
+            let s_res = s_client.try_add_to_goal(&orch, &epoch, caller, &routing.goal_id, &savings_amt);
+            match classify_call(s_res) {
+                StepOutcome::Success => savings_done = true,
+                StepOutcome::ContractRejection => {
                     Self::emit_cross_contract_failure(env, symbol_short!("savings"), true);
                     return Err(OrchestratorError::CrossContractCallFailed);
                 }
-                Err(_) => {
+                StepOutcome::InvocationFailure => {
                     Self::emit_cross_contract_failure(env, symbol_short!("savings"), false);
                     return Err(OrchestratorError::CrossContractCallFailed);
                 }
@@ -1567,13 +1597,14 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
-            let rejected_by_contract = match b_client.try_pay_bill(&orch, &epoch, caller, &routing.bill_id) {
-                Ok(Ok(_)) => {
+            let b_res = b_client.try_pay_bill(&orch, &epoch, caller, &routing.bill_id);
+            let rejected_by_contract = match classify_call(b_res) {
+                StepOutcome::Success => {
                     bills_done = true;
                     None
                 }
-                Ok(Err(_)) => Some(true),
-                Err(_) => Some(false),
+                StepOutcome::ContractRejection => Some(true),
+                StepOutcome::InvocationFailure => Some(false),
             };
             if let Some(from_contract) = rejected_by_contract {
                 Self::emit_cross_contract_failure(env, symbol_short!("bills"), from_contract);
@@ -1595,10 +1626,11 @@ impl Orchestrator {
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
-            let rejected_by_contract = match i_client.try_pay_premium(&orch, &epoch, caller, &routing.policy_id) {
-                Ok(Ok(_)) => None,
-                Ok(Err(_)) => Some(true),
-                Err(_) => Some(false),
+            let i_res = i_client.try_pay_premium(&orch, &epoch, caller, &routing.policy_id);
+            let rejected_by_contract = match classify_premium(i_res) {
+                StepOutcome::Success => None,
+                StepOutcome::ContractRejection => Some(true),
+                StepOutcome::InvocationFailure => Some(false),
             };
             if let Some(from_contract) = rejected_by_contract {
                 Self::emit_cross_contract_failure(env, symbol_short!("insur"), from_contract);
@@ -1636,6 +1668,12 @@ impl Orchestrator {
             .publish((symbol_short!("cctx_err"), step), rejected_by_contract);
     }
 
+    /// Emits an event indicating that a compensation (reversal) operation failed.
+    fn emit_compensation_failure(env: &Env, step: Symbol) {
+        env.events()
+            .publish((symbol_short!("orch"), symbol_short!("comp_fail")), step);
+    }
+
     /// Compensate a savings-goal contribution if it was applied.
     fn compensate_savings(
         env: &Env,
@@ -1651,10 +1689,16 @@ impl Orchestrator {
         }
         let sg_addr = match env.storage().instance().get(&symbol_short!("SG_ADDR")) {
             Some(a) => a,
-            None => return,
+            None => {
+                Self::emit_compensation_failure(env, symbol_short!("savings"));
+                return;
+            }
         };
         let client = interface::SavingsGoalsCompClient::new(env, &sg_addr);
-        let _ = client.try_remove_from_goal(orch, &epoch, executor, &goal_id, &amount);
+        let res = client.try_remove_from_goal(orch, &epoch, executor, &goal_id, &amount);
+        if !matches!(res, Ok(Ok(_))) {
+            Self::emit_compensation_failure(env, symbol_short!("savings"));
+        }
     }
 
     /// Compensate a bill payment if it was applied.
@@ -1672,10 +1716,16 @@ impl Orchestrator {
         }
         let bp_addr = match env.storage().instance().get(&symbol_short!("BP_ADDR")) {
             Some(a) => a,
-            None => return,
+            None => {
+                Self::emit_compensation_failure(env, symbol_short!("bills"));
+                return;
+            }
         };
         let client = interface::BillPaymentsCompClient::new(env, &bp_addr);
-        let _ = client.try_reverse_payment(orch, &epoch, executor, &bill_id, &amount);
+        let res = client.try_reverse_payment(orch, &epoch, executor, &bill_id, &amount);
+        if !matches!(res, Ok(Ok(_))) {
+            Self::emit_compensation_failure(env, symbol_short!("bills"));
+        }
     }
 
     fn get_nonce_value(env: &Env, address: &Address) -> u64 {
@@ -1984,18 +2034,31 @@ mod tests_nonce_eviction {
 
     #[contractimpl]
     impl MockSimpleContract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _goal_id: u32, amount: i128) -> i128 {
+            amount
+        }
+        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _bill_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _policy_id: u32) -> bool {
+            true
+        }
+        pub fn bump_cross_contract_epoch(_env: Env, _orchestrator: Address) -> u64 {
+            1
+        }
+        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
     }
 
     const BASE_TIME: u64 = 1_000;

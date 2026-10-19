@@ -6,7 +6,7 @@ use soroban_sdk::{
     testutils::{Address as _, Events, Ledger as _},
     Address, Env, FromVal, IntoVal, Symbol, Vec,
 };
-use std::{fs, path::PathBuf, string::String};
+use std::{format, fs, path::PathBuf, string::String};
 
 #[contract]
 pub struct MockContract;
@@ -19,13 +19,26 @@ impl MockContract {
     pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
         soroban_sdk::vec![&env, 2500, 2500, 2500, 2500]
     }
-    pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _goal_id: u32, _amount: i128) {}
+    pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _goal_id: u32, amount: i128) -> i128 {
+        amount
+    }
     pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _bill_id: u32) {}
-    pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _policy_id: u32) {}
+    pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _policy_id: u32) -> bool {
+        true
+    }
+    pub fn bump_cross_contract_epoch(_env: Env, _orchestrator: Address) -> u64 {
+        1
+    }
     // Compensation / reverse methods for rollback support.
-    pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-    pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-    pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+    pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+        true
+    }
+    pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+        true
+    }
+    pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+        true
+    }
 }
 
 #[contract]
@@ -50,11 +63,13 @@ mod mock_fail_savings {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> i128 {
             panic!("savings step failed")
         }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool {
+            true
+        }
     }
 }
 
@@ -72,11 +87,15 @@ mod mock_fail_bill {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 {
+            amount
+        }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {
             panic!("bill step failed")
         }
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool {
+            true
+        }
     }
 }
 
@@ -94,9 +113,11 @@ mod mock_fail_insurance {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 {
+            amount
+        }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool {
             panic!("insurance step failed")
         }
     }
@@ -116,9 +137,13 @@ mod mock_no_limit {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 {
+            amount
+        }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool {
+            true
+        }
     }
 }
 
@@ -1349,15 +1374,15 @@ mod mock_unsigned_fail_bill {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 { amount }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {
             panic!("bill step failed")
         }
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool { true }
         // Compensation methods (reverse interfaces)
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
     }
 }
 
@@ -1374,15 +1399,15 @@ mod mock_unsigned_fail_insurance {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 { amount }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool {
             panic!("insurance step failed")
         }
         // Compensation methods
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
     }
 }
 
@@ -1534,8 +1559,8 @@ fn test_fanout_flow_does_not_compensate_on_bill_failure() {
             "fan-out must report all_succeeded=false when a step fails"
         );
         assert!(
-            !fanout.savings.succeeded,
-            "savings step must report failure when bill mock panics"
+            fanout.savings.succeeded,
+            "savings step must succeed independently of bill failure"
         );
         assert!(!fanout.bills.succeeded, "bill step must report failure");
     } else if let Ok(Err(e)) = &result {
@@ -2032,9 +2057,9 @@ mod mock_split_0 {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             Vec::new(&env)
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 { amount }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool { true }
     }
 }
 
@@ -2051,9 +2076,9 @@ mod mock_split_1 {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 10000i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 { amount }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool { true }
     }
 }
 
@@ -2070,9 +2095,9 @@ mod mock_split_3 {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 { amount }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool { true }
     }
 }
 
@@ -2089,12 +2114,12 @@ mod mock_split_4 {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 { amount }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool { true }
+        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
     }
 }
 
@@ -2111,9 +2136,9 @@ mod mock_split_negative {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, -500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, amount: i128) -> i128 { amount }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool { true }
     }
 }
 
@@ -2135,18 +2160,18 @@ mod mock_hostile_all_fail {
         pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {
+        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> i128 {
             panic!("savings step failed")
         }
         pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {
             panic!("bill step failed")
         }
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {
+        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) -> bool {
             panic!("insurance step failed")
         }
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
     }
 }
 
@@ -2891,7 +2916,7 @@ fn bump_actor_epoch_overflow_returns_error() {
 
 /// Mock remittance split contract that returns a fixed split.
 mod mock_remittance_split {
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
     #[contract]
     pub struct Contract;
@@ -2909,7 +2934,7 @@ mod mock_remittance_split {
 
 /// Mock remittance split contract that returns an invalid split (wrong length).
 mod mock_remittance_split_invalid {
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
     #[contract]
     pub struct Contract;
@@ -3268,3 +3293,347 @@ fn test_fanout_rejects_short_split_vector() {
         "fanout must return InvalidAmount when split vector is short"
     );
 }
+
+// ---------------------------------------------------------------------------
+// ABI conformance & outcome classification tests
+// ---------------------------------------------------------------------------
+
+mod test_abi_conformance {
+    use super::*;
+    use soroban_sdk::{contract, contracterror, contractimpl, Address, Env};
+
+    #[contracterror]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    #[repr(u32)]
+    pub enum MockSavingsError {
+        InvalidAmount = 1,
+        GoalNotFound = 2,
+    }
+
+    mod mock_real_savings {
+        use super::*;
+
+        #[contract]
+        pub struct Contract;
+
+        #[contractimpl]
+        impl Contract {
+            pub fn add_to_goal(
+                _env: Env,
+                _orchestrator: Address,
+                _epoch: u64,
+                _caller: Address,
+                _goal_id: u32,
+                amount: i128,
+            ) -> Result<i128, MockSavingsError> {
+                Ok(amount)
+            }
+        }
+    }
+
+    mod mock_savings_rejection {
+        use super::*;
+
+        #[contract]
+        pub struct Contract;
+
+        #[contractimpl]
+        impl Contract {
+            pub fn add_to_goal(
+                _env: Env,
+                _orchestrator: Address,
+                _epoch: u64,
+                _caller: Address,
+                _goal_id: u32,
+                _amount: i128,
+            ) -> Result<i128, MockSavingsError> {
+                Err(MockSavingsError::GoalNotFound)
+            }
+        }
+    }
+
+    mod mock_insurance_returning_false {
+        use super::*;
+
+        #[contract]
+        pub struct Contract;
+
+        #[contractimpl]
+        impl Contract {
+            pub fn pay_premium(
+                _env: Env,
+                _orchestrator: Address,
+                _epoch: u64,
+                _caller: Address,
+                _policy_id: u32,
+            ) -> bool {
+                false
+            }
+        }
+    }
+
+    #[contracterror]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    #[repr(u32)]
+    pub enum MockBillError {
+        BillNotFound = 1,
+    }
+
+    mod mock_bill_contract_error {
+        use super::*;
+
+        #[contract]
+        pub struct Contract;
+
+        #[contractimpl]
+        impl Contract {
+            pub fn pay_bill(
+                _env: Env,
+                _orchestrator: Address,
+                _epoch: u64,
+                _caller: Address,
+                _bill_id: u32,
+            ) -> Result<(), MockBillError> {
+                Err(MockBillError::BillNotFound)
+            }
+        }
+    }
+
+    #[contracterror]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    #[repr(u32)]
+    pub enum MockCompError {
+        Failed = 1,
+    }
+
+    mod mock_failing_compensation_savings {
+        use super::*;
+
+        #[contract]
+        pub struct Contract;
+
+        #[contractimpl]
+        impl Contract {
+            pub fn add_to_goal(
+                _env: Env,
+                _orchestrator: Address,
+                _epoch: u64,
+                _caller: Address,
+                _goal_id: u32,
+                amount: i128,
+            ) -> i128 {
+                amount
+            }
+            pub fn remove_from_goal(
+                _env: Env,
+                _orchestrator: Address,
+                _epoch: u64,
+                _user: Address,
+                _goal_id: u32,
+                _amount: i128,
+            ) -> Result<bool, MockCompError> {
+                Err(MockCompError::Failed)
+            }
+        }
+    }
+
+    /// Acceptance Criterion 1:
+    /// Test flow_succeeds_with_value_returning_downstreams:
+    /// A savings mock returning Result<i128, _> with Ok(amount) (same shape as real contract)
+    /// returns Ok(()) and successful_executions == 1.
+    #[test]
+    fn test_flow_succeeds_with_value_returning_downstreams() {
+        let (env, owner) = setup_test();
+        let (_orch_id, client) = register_orchestrator(&env);
+
+        let fw = env.register_contract(None, MockContract);
+        let rs = env.register_contract(None, MockContract);
+        let sg = env.register_contract(None, mock_real_savings::Contract);
+        let bp = env.register_contract(None, MockContract);
+        let ins = env.register_contract(None, MockContract);
+        client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+        let caller = Address::generate(&env);
+        let res = client.try_execute_remittance_flow(&RemittanceFlowParams {
+            caller: caller.clone(),
+            total_amount: 10_000,
+            family_wallet: fw,
+            remittance_split: rs,
+            savings: sg,
+            bills: bp,
+            insurance: ins,
+            goal_id: 1,
+            bill_id: 1,
+            policy_id: 1,
+        });
+        assert_eq!(res, Ok(Ok(true)));
+
+        let stats = client.get_execution_stats().unwrap();
+        assert_eq!(stats.successful_executions, 1);
+        assert_eq!(stats.failed_executions, 0);
+    }
+
+    /// Acceptance Criterion 2:
+    /// Test contract_error_is_reported_as_rejection:
+    /// A savings mock returning Err(MockErr::X) yields CrossContractCallFailed
+    /// and a cctx_err event with rejected_by_contract = true.
+    #[test]
+    fn test_contract_error_is_reported_as_rejection() {
+        let (env, owner) = setup_test();
+        let (orch_id, client) = register_orchestrator(&env);
+
+        let fw = env.register_contract(None, MockContract);
+        let rs = env.register_contract(None, MockContract);
+        let sg = env.register_contract(None, mock_savings_rejection::Contract);
+        let bp = env.register_contract(None, MockContract);
+        let ins = env.register_contract(None, MockContract);
+        client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+        let caller = Address::generate(&env);
+        let res = client.try_execute_remittance_flow(&RemittanceFlowParams {
+            caller: caller.clone(),
+            total_amount: 10_000,
+            family_wallet: fw,
+            remittance_split: rs,
+            savings: sg,
+            bills: bp,
+            insurance: ins,
+            goal_id: 1,
+            bill_id: 1,
+            policy_id: 1,
+        });
+        assert_eq!(res, Err(Ok(OrchestratorError::CrossContractCallFailed)));
+
+        let expected_topics = soroban_sdk::vec![
+            &env,
+            symbol_short!("cctx_err").into_val(&env),
+            symbol_short!("savings").into_val(&env),
+        ];
+        let matched: std::vec::Vec<_> = env
+            .events()
+            .all()
+            .iter()
+            .filter(|(cid, topics, _)| cid == &orch_id && *topics == expected_topics)
+            .collect();
+        assert_eq!(matched.len(), 1);
+        let (_, _, data) = &matched[0];
+        assert_eq!(bool::from_val(&env, data), true);
+    }
+
+    /// Acceptance Criterion 3:
+    /// Test pay_premium_false_is_failure:
+    /// On the signed path, an insurance mock returning false triggers
+    /// compensation and RemittanceFlowRolledBack.
+    #[test]
+    fn test_pay_premium_false_is_failure() {
+        let (env, owner) = setup_test();
+        let (orch_id, client) = register_orchestrator(&env);
+
+        let fw = env.register_contract(None, MockContract);
+        let rs = env.register_contract(None, MockContract);
+        let sg = env.register_contract(None, MockContract);
+        let bp = env.register_contract(None, MockContract);
+        let ins = env.register_contract(None, mock_insurance_returning_false::Contract);
+        init_orchestrator_with_mocks(&env, &client, &owner, fw, rs, sg, bp, ins);
+
+        let executor = Address::generate(&env);
+        let deadline = signed_flow_deadline(&env);
+        let hash = signed_flow_hash(&env, &executor, 10_000, 0, deadline);
+
+        let result = client.try_execute_remittance_flow_signed(
+            &executor,
+            &10_000,
+            &0,
+            &deadline,
+            &hash,
+            &0u64,
+        );
+        assert_eq!(result, Err(Ok(OrchestratorError::RemittanceFlowRolledBack)));
+
+        let expected_topics = soroban_sdk::vec![
+            &env,
+            symbol_short!("cctx_err").into_val(&env),
+            symbol_short!("insur").into_val(&env),
+        ];
+        let matched: std::vec::Vec<_> = env
+            .events()
+            .all()
+            .iter()
+            .filter(|(cid, topics, _)| cid == &orch_id && *topics == expected_topics)
+            .collect();
+        assert_eq!(matched.len(), 1);
+        let (_, _, data) = &matched[0];
+        assert_eq!(bool::from_val(&env, data), true);
+    }
+
+    /// Acceptance Criterion 4:
+    /// Test fanout_flags_match_real_outcomes:
+    /// Savings Ok, bills contract error, insurance false gives
+    /// succeeded = [true, false, false] and all_succeeded = false.
+    #[test]
+    fn test_fanout_flags_match_real_outcomes() {
+        let (env, owner) = setup_test();
+        let (_orch_id, client) = register_orchestrator(&env);
+
+        let fw = env.register_contract(None, MockContract);
+        let rs = env.register_contract(None, mock_remittance_split::Contract);
+        let sg = env.register_contract(None, MockContract);
+        let bp = env.register_contract(None, mock_bill_contract_error::Contract);
+        let ins = env.register_contract(None, mock_insurance_returning_false::Contract);
+        client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+        let executor = Address::generate(&env);
+        let result = client.execute_flow_fanout(&executor, &10_000i128);
+
+        assert!(result.savings.succeeded, "savings should be true");
+        assert!(!result.bills.succeeded, "bills should be false");
+        assert!(!result.insurance.succeeded, "insurance should be false");
+        assert!(!result.all_succeeded, "all_succeeded should be false");
+    }
+
+    /// Acceptance Criterion 5:
+    /// Test failed_compensation_emits_event:
+    /// A remove_from_goal mock returning Err produces a comp_fail event.
+    #[test]
+    fn test_failed_compensation_emits_event() {
+        let (env, owner) = setup_test();
+        let (orch_id, client) = register_orchestrator(&env);
+
+        let fw = env.register_contract(None, MockContract);
+        let rs = env.register_contract(None, MockContract);
+        let sg = env.register_contract(None, mock_failing_compensation_savings::Contract);
+        let bp = env.register_contract(None, mock_fail_bill::Contract);
+        let ins = env.register_contract(None, MockContract);
+        init_orchestrator_with_mocks(&env, &client, &owner, fw, rs, sg, bp, ins);
+
+        let executor = Address::generate(&env);
+        let deadline = signed_flow_deadline(&env);
+        let hash = signed_flow_hash(&env, &executor, 10_000, 0, deadline);
+
+        let result = client.try_execute_remittance_flow_signed(
+            &executor,
+            &10_000,
+            &0,
+            &deadline,
+            &hash,
+            &0u64,
+        );
+        assert_eq!(result, Err(Ok(OrchestratorError::RemittanceFlowRolledBack)));
+
+        let expected_topics = soroban_sdk::vec![
+            &env,
+            symbol_short!("orch").into_val(&env),
+            symbol_short!("comp_fail").into_val(&env),
+        ];
+        let matched: std::vec::Vec<_> = env
+            .events()
+            .all()
+            .iter()
+            .filter(|(cid, topics, _)| cid == &orch_id && *topics == expected_topics)
+            .collect();
+        assert_eq!(matched.len(), 1);
+        let (_, _, data) = &matched[0];
+        assert_eq!(Symbol::from_val(&env, data), symbol_short!("savings"));
+    }
+}
+
