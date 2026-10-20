@@ -113,7 +113,10 @@ fn test_emit_encodes_priority_as_third_topic() {
 #[test]
 fn test_emit_batch_uses_low_priority_topic() {
     let env = Env::default();
-    RemitwiseEvents::emit_batch(&env, EventCategory::Transaction, symbol_short!("batch"), 5);
+    let contract_id = env.register_contract(None, EventHarness);
+    env.as_contract(&contract_id, || {
+        RemitwiseEvents::emit_batch(&env, EventCategory::Transaction, symbol_short!("batch"), 5);
+    });
     let events = env.events().all();
     let (_, topics, _) = events.last().unwrap();
     let prio_raw: u32 = soroban_sdk::FromVal::from_val(&env, &topics.get(2).unwrap());

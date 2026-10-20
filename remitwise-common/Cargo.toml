@@ -8,6 +8,7 @@ publish = false
 soroban-sdk = "=21.7.7"
 
 [dev-dependencies]
+ed25519-dalek = { version = "=2.2.0", features = ["rand_core"] }
 proptest = "1"
 rand = "0.8"
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }

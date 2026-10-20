@@ -113,6 +113,35 @@ bash check_ci.sh
 
 ---
 
+## Continuous Integration (CI)
+
+Our CI workflow (`.github/workflows/ci.yml`) enforces automated quality gates on every push and pull request to `main`:
+
+### Gated Crates (Blocking)
+Currently, three crates are part of the blocking CI gate matrix (tested across both MSRV `1.88.0` and `stable`):
+- `remitwise-common` (library and tests)
+- `orchestrator` (contract, integration tests, and release WASM build)
+- `reporting` (contract, integration tests, and release WASM build)
+
+Each gated crate must pass:
+1. `cargo fmt -p <crate> -- --check`
+2. `cargo clippy -p <crate> --all-targets -- -D warnings`
+3. `cargo test -p <crate>`
+4. Ignored test budget verification (cannot exceed the current count recorded in `KNOWN_FAILING_TESTS.md`: max 4 for `remitwise-common`, max 8 for `orchestrator`, max 1 for `reporting`)
+5. `cargo build -p <crate> --target wasm32-unknown-unknown --release` (for contract crates)
+
+### Non-Gated Crates & Promotion
+Other crates (`savings_goals`, `insurance`, `bill_payments`, `remittance_split`, `family_wallet`, `emergency_killswitch`, `data_migration`) are monitored via the non-blocking `broken-crates` CI job, which reports a pass/fail status table to the GitHub Actions step summary.
+
+**How to promote a crate to the blocking CI gate:**
+1. Fix compilation, clippy warnings, formatting, and tests for the target crate.
+2. In `.github/workflows/ci.yml`, add the crate name to the `matrix.crate` array in the `contracts` job.
+3. Remove the crate from the `broken-crates` check list.
+4. If the crate was excluded from the workspace (in root `Cargo.toml`), move it into `workspace.members` if ready.
+5. Submit a PR and verify the blocking gate runs and passes.
+
+---
+
 ## Repo-Specific Rules
 
 - **No `#[allow(unused)]` in production code** without a comment explaining why.

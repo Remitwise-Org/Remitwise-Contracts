@@ -1,59 +1,84 @@
-use reporting::{ReportingClient, ReportingError};
-use soroban_sdk::{Address, Env, String};
+use reporting::{ContractAddresses, ReportingContract, ReportingContractClient, ReportingError};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[test]
 fn test_addresses_not_configured_error() {
     let env = Env::default();
-    let client = ReportingClient::new(&env, &env.register_contract(None, reporting::Reporting {}));
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
 
     // Don't configure addresses
-
-    // Test each endpoint that requires addresses
-    let result = client.try_submit_report(&Report { /* ... */ });
-    assert!(result.is_err());
-
-    if let Err(e) = result {
-        // Check that it returns the correct error
-        // This depends on how your error handling works
-        assert!(e.to_string().contains("AddressesNotConfigured"));
-    }
+    let user = Address::generate(&env);
+    let result = client.try_get_savings_report(&user, &0, &100);
+    assert_eq!(result, Err(Ok(ReportingError::AddressesNotConfigured)));
 }
 
 #[test]
 fn test_addresses_configured_success() {
     let env = Env::default();
-    let client = ReportingClient::new(&env, &env.register_contract(None, reporting::Reporting {}));
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
 
-    // Configure addresses
-    let reporting_contract = env.register_contract(None, reporting::Reporting {});
-    let address = Address::random(&env);
+    assert_eq!(client.get_addresses(), None);
 
-    // Set up addresses in storage (implementation depends on your contract)
-    // ...
+    let addrs = ContractAddresses {
+        remittance_split: Address::generate(&env),
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
 
-    // Now endpoints should work
-    let result = client.try_submit_report(&Report { /* ... */ });
-    assert!(result.is_ok());
+    let result = client.try_configure_addresses(
+        &admin,
+        &addrs.remittance_split,
+        &addrs.savings_goals,
+        &addrs.bill_payments,
+        &addrs.insurance,
+        &addrs.family_wallet,
+    );
+    assert_eq!(result, Ok(Ok(())));
+    assert_eq!(client.get_addresses(), Some(addrs));
 }
 
 #[test]
 fn test_all_endpoints_fail_closed() {
     let env = Env::default();
-    let client = ReportingClient::new(&env, &env.register_contract(None, reporting::Reporting {}));
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+    let user = Address::generate(&env);
 
-    // List of all endpoints that require addresses
-    let endpoints: Vec<fn(&ReportingClient) -> Result<(), ContractError>> = vec![
-        // Add all your endpoint functions here
-        |c| c.try_submit_report(&Report { /* ... */ }),
-        |c| c.try_get_report_data(&DataRequest { /* ... */ }),
-        // ... etc
-    ];
-
-    for endpoint in endpoints {
-        let result = endpoint(&client);
-        assert!(
-            result.is_err(),
-            "Endpoint should fail when addresses not configured"
-        );
-    }
+    assert_eq!(
+        client.try_check_dependencies(&admin),
+        Err(Ok(ReportingError::AddressesNotConfigured))
+    );
+    assert_eq!(
+        client.try_get_savings_report(&user, &0, &100),
+        Err(Ok(ReportingError::AddressesNotConfigured))
+    );
+    assert_eq!(
+        client.try_get_bill_compliance_report(&user, &0, &100),
+        Err(Ok(ReportingError::AddressesNotConfigured))
+    );
+    assert_eq!(
+        client.try_get_insurance_report(&user, &0, &100),
+        Err(Ok(ReportingError::AddressesNotConfigured))
+    );
+    assert_eq!(
+        client.try_get_financial_health_report(&user, &0, &100),
+        Err(Ok(ReportingError::AddressesNotConfigured))
+    );
+    assert_eq!(
+        client.try_generate_financial_health_report(&user, &0, &100),
+        Err(Ok(ReportingError::AddressesNotConfigured))
+    );
 }
