@@ -8705,3 +8705,186 @@ fn test_unauthorized_viewer_fails_before_mutation() {
         "viewer's role must not change after unauthorized attempts"
     );
 }
+
+#[test]
+fn spending_rules_matrix() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Start with ledger at t = 1_000
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let member_limit_0 = Address::generate(&env);
+    let member_limit_1000 = Address::generate(&env);
+    let viewer = Address::generate(&env);
+    let unknown = Address::generate(&env);
+    let expired_member = Address::generate(&env);
+
+    client.init(&owner, &vec![&env]);
+
+    // Set trusted orchestrator and epoch 0 so check_spending_limit can be called
+    let orchestrator = Address::generate(&env);
+    client.set_trusted_orchestrator(&owner, &orchestrator);
+
+    // Setup roles
+    client.add_family_member(&owner, &admin, &FamilyRole::Admin);
+    client.add_member(&owner, &member_limit_0, &FamilyRole::Member, &0);
+    client.add_member(&owner, &member_limit_1000, &FamilyRole::Member, &1_000);
+    client.add_family_member(&owner, &viewer, &FamilyRole::Viewer);
+    client.add_member(&owner, &expired_member, &FamilyRole::Member, &1_000);
+
+    // Expire expired_member by setting expiry = 1_500, then advancing ledger timestamp to 2_000
+    let expiry = 1_500u64;
+    client.set_role_expiry(&owner, &expired_member, &Some(expiry));
+    set_ledger_time(&env, 200, 2_000);
+
+    // Amounts to test: {-1, 0, 1_000, 1_001}
+    let amounts: [i128; 4] = [-1, 0, 1_000, 1_001];
+
+    struct RoleTestCase<'a> {
+        label: &'a str,
+        address: &'a Address,
+        // expected results for amounts: [-1, 0, 1_000, 1_001]
+        expected: [bool; 4],
+    }
+
+    let test_cases = [
+        RoleTestCase {
+            label: "Owner",
+            address: &owner,
+            expected: [false, true, true, true],
+        },
+        RoleTestCase {
+            label: "Admin",
+            address: &admin,
+            expected: [false, true, true, true],
+        },
+        RoleTestCase {
+            label: "Member with limit 0",
+            address: &member_limit_0,
+            expected: [false, true, true, true],
+        },
+        RoleTestCase {
+            label: "Member with limit 1_000",
+            address: &member_limit_1000,
+            expected: [false, true, true, false],
+        },
+        RoleTestCase {
+            label: "Viewer",
+            address: &viewer,
+            expected: [false, false, false, false],
+        },
+        RoleTestCase {
+            label: "unknown",
+            address: &unknown,
+            expected: [false, false, false, false],
+        },
+        RoleTestCase {
+            label: "expired-role Member",
+            address: &expired_member,
+            expected: [false, false, false, false],
+        },
+    ];
+
+    let mut case_count = 0;
+    for tc in test_cases.iter() {
+        for (i, &amount) in amounts.iter().enumerate() {
+            case_count += 1;
+            let expected_bool = tc.expected[i];
+
+            // 1. Assert via check_spending_limit
+            let actual = client.check_spending_limit(&orchestrator, &0, tc.address, &amount);
+            assert_eq!(
+                actual, expected_bool,
+                "check_spending_limit failed for {} at amount {}",
+                tc.label, amount
+            );
+
+            // 2. Assert via validate_precision_spending
+            let vps_res = client.try_validate_precision_spending(tc.address, &amount);
+            if amount <= 0 {
+                assert_eq!(
+                    vps_res,
+                    Err(Ok(Error::InvalidAmount)),
+                    "validate_precision_spending expected InvalidAmount for {} at amount {}",
+                    tc.label,
+                    amount
+                );
+            } else if expected_bool {
+                assert_eq!(
+                    vps_res,
+                    Ok(Ok(())),
+                    "validate_precision_spending expected Ok for {} at amount {}",
+                    tc.label,
+                    amount
+                );
+            } else {
+                assert_eq!(
+                    vps_res,
+                    Err(Ok(Error::Unauthorized)),
+                    "validate_precision_spending expected Unauthorized for {} at amount {}",
+                    tc.label,
+                    amount
+                );
+            }
+        }
+    }
+
+    assert_eq!(case_count, 28, "Must test exactly 28 cases (7 roles x 4 amounts)");
+}
+
+#[test]
+#[should_panic(expected = "Spending limit exceeded")]
+fn withdraw_by_member_does_not_require_orchestrator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let token = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    client.init(&owner, &vec![&env]);
+    // Configure member with spending_limit = 1_000, no trusted orchestrator configured
+    client.add_member(&owner, &member, &FamilyRole::Member, &1_000);
+
+    // Member with limit 1_000 can withdraw 500 without an orchestrator configured (returns proposal ID)
+    let proposal_id = client.withdraw(&member, &token, &recipient, &500);
+    assert!(proposal_id > 0);
+
+    // Withdraw of 1_001 must panic with "Spending limit exceeded"
+    client.withdraw(&member, &token, &recipient, &1_001);
+}
+
+#[test]
+fn check_spending_limit_rejects_wrong_orchestrator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let trusted_orchestrator = Address::generate(&env);
+    let wrong_orchestrator = Address::generate(&env);
+    client.set_trusted_orchestrator(&owner, &trusted_orchestrator);
+
+    // The guarded entrypoint called with a non-trusted address fails with the guard error even for an Owner.
+    let result = client.try_check_spending_limit(&wrong_orchestrator, &0, &owner, &1_000);
+    assert!(
+        result.is_err(),
+        "The guarded entrypoint called with a non-trusted address must fail even for an Owner"
+    );
+
+    // Confirm that with the trusted orchestrator, Owner check succeeds
+    let ok = client.check_spending_limit(&trusted_orchestrator, &0, &owner, &1_000);
+    assert!(ok, "Trusted orchestrator must succeed for Owner");
+}
