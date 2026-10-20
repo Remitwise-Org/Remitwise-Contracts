@@ -292,17 +292,28 @@ struct FlowRouting {
 }
 
 impl FlowRouting {
-    fn from_params(params: &RemittanceFlowParams) -> Self {
-        Self {
-            family_wallet: params.family_wallet.clone(),
-            remittance_split: params.remittance_split.clone(),
-            savings: params.savings.clone(),
-            bills: params.bills.clone(),
-            insurance: params.insurance.clone(),
+    fn from_params(env: &Env, params: &RemittanceFlowParams) -> Result<Self, OrchestratorError> {
+        let stored = Self::from_storage(env)?;
+
+        if params.family_wallet != stored.family_wallet
+            || params.remittance_split != stored.remittance_split
+            || params.savings != stored.savings
+            || params.bills != stored.bills
+            || params.insurance != stored.insurance
+        {
+            return Err(OrchestratorError::InvalidDependency);
+        }
+
+        Ok(Self {
+            family_wallet: stored.family_wallet,
+            remittance_split: stored.remittance_split,
+            savings: stored.savings,
+            bills: stored.bills,
+            insurance: stored.insurance,
             goal_id: params.goal_id,
             bill_id: params.bill_id,
             policy_id: params.policy_id,
-        }
+        })
     }
 
     fn from_storage(env: &Env) -> Result<Self, OrchestratorError> {
@@ -397,6 +408,10 @@ pub struct Orchestrator;
 impl Orchestrator {
     /// Executes the full remittance flow across multiple contracts.
     ///
+    /// Validates caller-supplied dependency addresses against the trusted addresses stored
+    /// at contract initialization. If any dependency address differs or storage is uninitialized,
+    /// returns [`OrchestratorError::InvalidDependency`] before making any cross-contract calls.
+    ///
     /// Emits the same lifecycle events (`flow`, `flow_ok`, `flow_fail`) and writes
     /// `flow_exec` audit entries as [`Self::execute_remittance_flow_signed`], so
     /// indexers observe all remittance executions regardless of entrypoint.
@@ -439,11 +454,12 @@ impl Orchestrator {
         env: &Env,
         params: &RemittanceFlowParams,
     ) -> Result<(), OrchestratorError> {
+        let routing = FlowRouting::from_params(env, params)?;
         Self::run_remittance_fan_out(
             env,
             &params.caller,
             params.total_amount,
-            &FlowRouting::from_params(params),
+            &routing,
             false,
         )
     }
@@ -725,6 +741,15 @@ impl Orchestrator {
     /// Useful for idempotent retries or best-effort distribution where partial progress
     /// is preferable to full rollback.
     ///
+    /// # Security
+    /// - Authorization required for `executor`.
+    /// - Rejects `amount <= 0` and records validation failure.
+    /// - Protected against reentrancy: checks and acquires `EXEC_LOCK` during execution.
+    /// - Enforces spending limit via `check_spending_limit` on the stored `family_wallet`
+    ///   before any downstream mutations; returns [`OrchestratorError::Unauthorized`] on denial.
+    /// - Emits standard lifecycle events (`flow`, `flow_ok`, `flow_fail`).
+    /// - Records outcome in execution statistics and audit ring-buffer via [`Self::record_flow_outcome`].
+    ///
     /// # Memoised fee lookup — fix for #1339
     /// Dependency addresses and execution IDs are read from instance storage exactly
     /// once via `FlowRouting::from_storage`, and the split allocation is computed via
@@ -745,14 +770,50 @@ impl Orchestrator {
         executor.require_auth();
 
         if amount <= 0 {
+            Self::record_flow_validation_failure(&env, &executor);
             return Err(OrchestratorError::InvalidAmount);
         }
 
+        let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
+        if is_locked {
+            Self::record_flow_validation_failure(&env, &executor);
+            return Err(OrchestratorError::ExecutionLocked);
+        }
+
+        Self::emit_flow_started(&env, &executor, amount);
+
+        let result = {
+            let _guard = Self::acquire_execution_lock(&env)?;
+            Self::perform_flow_fanout(&env, &executor, amount)
+        };
+
+        match result {
+            Ok(fanout_result) => {
+                let outcome = if fanout_result.all_succeeded {
+                    Ok(())
+                } else {
+                    Err(OrchestratorError::CrossContractCallFailed)
+                };
+                let _ = Self::record_flow_outcome(&env, &executor, amount, outcome);
+                Ok(fanout_result)
+            }
+            Err(e) => {
+                let _ = Self::record_flow_outcome(&env, &executor, amount, Err(e));
+                Err(e)
+            }
+        }
+    }
+
+    fn perform_flow_fanout(
+        env: &Env,
+        executor: &Address,
+        amount: i128,
+    ) -> Result<FanOutFlowResult, OrchestratorError> {
         // Every privileged cross-contract call carries the orchestrator's own
         // contract identity and the current actor epoch so each downstream
         // contract can validate both before mutating.
         let orch = env.current_contract_address();
-        let epoch = Self::get_actor_epoch(&env);
+        let epoch = Self::get_actor_epoch(env);
 
         // Surface the epoch used for this flow so off-chain reconciliation can
         // correlate every downstream event emitted during the fan-out.
@@ -760,13 +821,18 @@ impl Orchestrator {
             .publish((symbol_short!("orch"), symbol_short!("flow_ep")), epoch);
 
         // --- #1339: read all dependency addresses and IDs in one pass ----------
-        let routing = FlowRouting::from_storage(&env)?;
+        let routing = FlowRouting::from_storage(env)?;
+
+        let fw_client = interface::FamilyWalletClient::new(env, &routing.family_wallet);
+        if !fw_client.check_spending_limit(&orch, &epoch, executor, &amount) {
+            return Err(OrchestratorError::Unauthorized);
+        }
 
         // --- #1339: single cross-contract call to fetch the configured split ---
         // `calculate_split` returns [spending, savings, bills, insurance] amounts.
         // We call it once and reuse the result for all three fan-out steps,
         // so the fee schedule is fetched exactly once per batch invocation.
-        let rs_client = interface::RemittanceSplitClient::new(&env, &routing.remittance_split);
+        let rs_client = interface::RemittanceSplitClient::new(env, &routing.remittance_split);
         let allocations = rs_client.calculate_split(&orch, &epoch, &amount);
 
         if allocations.len() < 4 {
@@ -782,14 +848,14 @@ impl Orchestrator {
         }
 
         // --- #1345: use .is_ok() so succeeded=true when the call succeeds -----
-        let s_ok = interface::SavingsGoalsClient::new(&env, &routing.savings)
-            .try_add_to_goal(&orch, &epoch, &executor, &routing.goal_id, &savings_amt)
+        let s_ok = interface::SavingsGoalsClient::new(env, &routing.savings)
+            .try_add_to_goal(&orch, &epoch, executor, &routing.goal_id, &savings_amt)
             .is_ok();
-        let b_ok = interface::BillPaymentsClient::new(&env, &routing.bills)
-            .try_pay_bill(&orch, &epoch, &executor, &routing.bill_id)
+        let b_ok = interface::BillPaymentsClient::new(env, &routing.bills)
+            .try_pay_bill(&orch, &epoch, executor, &routing.bill_id)
             .is_ok();
-        let i_ok = interface::InsuranceClient::new(&env, &routing.insurance)
-            .try_pay_premium(&orch, &epoch, &executor, &routing.policy_id)
+        let i_ok = interface::InsuranceClient::new(env, &routing.insurance)
+            .try_pay_premium(&orch, &epoch, executor, &routing.policy_id)
             .is_ok();
 
         let savings = FanOutStepResult {

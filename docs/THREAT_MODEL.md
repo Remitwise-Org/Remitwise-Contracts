@@ -67,11 +67,21 @@ This document provides a STRIDE-style threat analysis for the Remitwise smart co
 | Threat | Description | Mitigation |
 |--------|-------------|------------|
 | Spoofing | Attacker triggers flow for someone else | `caller.require_auth()` + checks against stored owner |
-| Tampering | Reentrancy attacks | Execution state lock (`Idle`/`Executing`) guards entrypoint |
+| Tampering | Reentrancy attacks | Execution state lock (`EXEC_LOCK`) guards entrypoint |
+| Tampering / Elevation of Privilege | Attacker supplies spoofed dependency addresses (e.g. fake family wallet) to bypass spending limits | `FlowRouting::from_params` validates all 5 addresses against instance storage; returns `InvalidDependency` on mismatch |
 | Repudiation | Caller denies triggering flow | Audit log entry + events emitted |
 | Information Disclosure | N/A | Flow details are public |
 | Denial of Service | Replay attacks | Per-caller per-command nonce tracking |
-| Elevation of Privilege | N/A | Flow restricted to authorized callers |
+| Elevation of Privilege | Caller exceeds spending limit | Enforces `check_spending_limit` on stored `family_wallet` |
+
+#### Entrypoint: `execute_flow_fanout`
+| Threat | Description | Mitigation |
+|--------|-------------|------------|
+| Spoofing | Attacker triggers fanout for someone else | `executor.require_auth()` |
+| Tampering | Reentrancy attacks during fanout | `EXEC_LOCK` held via RAII `LockGuard` during downstream execution; returns `ExecutionLocked` |
+| Elevation of Privilege | Attacker bypasses spending limits | Gates execution with `check_spending_limit` on stored `family_wallet` contract; returns `Unauthorized` on denial |
+| Repudiation | Caller denies execution outcome | `flow`, `flow_ok`, `flow_fail` lifecycle events emitted; `flow_exec` audit entry recorded |
+| Denial of Service | Zero or negative amount execution | Validates `amount > 0`; records validation failure |
 
 ### 5. Family Wallet Contract (`family_wallet`)
 
