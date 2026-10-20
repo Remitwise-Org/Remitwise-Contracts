@@ -20,12 +20,12 @@ members = [
     "testutils",
     "integration_tests",
     "remitwise-common",
+    "savings_goals",
 ]
 exclude = [
     "bill_payments",
     "insurance",
     "remittance_split",
-    "savings_goals",
 ]
 default-members = [
     "family_wallet",

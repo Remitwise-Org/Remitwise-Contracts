@@ -188,7 +188,7 @@ fn stress_goals_across_10_users() {
 /// after the ledger advances far enough to drop TTL below the threshold (17,280).
 ///
 /// Phase 1: create 50 goals at sequence 100 → live_until ≈ 518,500
-/// Phase 2: advance to sequence 510,000 → TTL ≈ 8,500 (below threshold)
+/// Phase 2: advance to sequence 690,000 so the current TTL falls below threshold.
 /// Phase 3: create 1 more goal → extend_ttl fires → TTL re-bumped
 #[test]
 fn stress_ttl_re_bumped_after_ledger_advancement() {
@@ -214,7 +214,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     // Phase 2: advance ledger so TTL drops below threshold
     env.ledger().set(LedgerInfo {
         protocol_version: env.ledger().protocol_version(),
-        sequence_number: 510_000,
+        sequence_number: 690_000,
         timestamp: 1_705_000_000,
         network_id: [0; 32],
         base_reserve: 10,
@@ -270,7 +270,7 @@ fn stress_ttl_re_bumped_by_add_to_goal_after_ledger_advancement() {
     });
 
     // add_to_goal must re-bump TTL
-    client.add_to_goal(&owner, &goal_id, &500i128);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &500i128) };
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(

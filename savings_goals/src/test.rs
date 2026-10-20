@@ -7,6 +7,7 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
     Address, Env, String,
 };
+use testutils::set_ledger_time;
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {
@@ -241,7 +242,7 @@ fn test_add_to_goal_increments() {
         &false,
     );
 
-    let new_balance = client.add_to_goal(&user, &id, &500);
+    let new_balance = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &user, &id, &500) };
     assert_eq!(new_balance, 500);
 }
 
@@ -254,7 +255,7 @@ fn test_add_to_non_existent_goal() {
 
     client.init();
     env.mock_all_auths();
-    let res = client.try_add_to_goal(&user, &99, &500);
+    let res = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &user, &99, &500) };
     assert!(res.is_err());
 }
 
@@ -324,7 +325,7 @@ fn test_is_goal_completed() {
     );
 
     // 3. Add exactly the target amount
-    client.add_to_goal(&user, &id, &target);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &user, &id, &target) };
 
     // 4. Verify the balance actually updated in storage
     let goal = client.get_goal(&id).unwrap();
@@ -340,7 +341,7 @@ fn test_is_goal_completed() {
     );
 
     // 6. Bonus: Check that it stays completed if we go over the target
-    client.add_to_goal(&user, &id, &1);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &user, &id, &1) };
     assert!(
         client.is_goal_completed(&id),
         "Goal should stay completed if overfunded"
@@ -365,7 +366,7 @@ fn test_edge_cases_large_amounts() {
         &false,
     );
 
-    client.add_to_goal(&user, &id, &(safe_cap - 100));
+    { let orchestrator = Address::from_string(&String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &user, &id, &(safe_cap - 100)) };
     let goal = client.get_goal(&id).unwrap();
     assert_eq!(goal.current_amount, safe_cap - 100);
 }
@@ -413,8 +414,8 @@ fn test_multiple_goals_management() {
         &false,
     );
 
-    client.add_to_goal(&user, &id1, &500);
-    client.add_to_goal(&user, &id2, &1500);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &user, &id1, &500) };
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &user, &id2, &1500) };
 
     let g1 = client.get_goal(&id1).unwrap();
     let g2 = client.get_goal(&id2).unwrap();
@@ -439,7 +440,7 @@ fn test_extend_goal_deadline_within_cap() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000, &false);
 
     let new_target = 2000000000 + 86400; // one day past the current target
     let updated = client.extend_goal_deadline(&user, &id, &new_target);
@@ -459,7 +460,7 @@ fn test_extend_goal_deadline_past_ledger_cap() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000, &false);
 
     // MAX_EXTENSION_SECONDS is 5 years from NOW; ask for 5 years and a day
     // to land just past the cap (and still past the current target_date,
@@ -478,7 +479,7 @@ fn test_extend_goal_deadline_rejects_non_forward_move() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000, &false);
 
     client.extend_goal_deadline(&user, &id, &2000000000);
 }

@@ -179,9 +179,14 @@ fn bench_create_savings_schedule() {
 
 fn setup_archived_goals(client: &SavingsGoalContractClient, owner: &Address, n: u32) {
     let name = String::from_str(&client.env, "G");
+    let orchestrator = Address::from_string(&String::from_str(
+        &client.env,
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+    ));
+    client.set_trusted_orchestrator(&orchestrator, &orchestrator);
     for _ in 0..n {
         let goal_id = client.create_goal(owner, &name, &10_000i128, &1_800_000u64, &false);
-        client.add_to_goal(owner, &goal_id, &10_000i128);
+        client.add_to_goal(&orchestrator, &0u64, owner, &goal_id, &10_000i128);
         client.archive_goal(owner, &goal_id);
     }
 }

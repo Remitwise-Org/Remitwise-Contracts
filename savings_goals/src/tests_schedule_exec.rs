@@ -217,7 +217,7 @@ fn test_overflow_near_limit_schedule_skipped() {
     let goal_id = make_goal(&env, &client, &owner, cap);
 
     // Pre-fill to one unit below the safe cap.
-    client.add_to_goal(&owner, &goal_id, &(cap - 1));
+    { let orchestrator = soroban_sdk::Address::from_string(&String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &(cap - 1)) };
 
     // Schedule: amount=10 → new_total = cap - 1 + 10 = cap + 9 > cap → skipped.
     client.create_savings_schedule(&owner, &goal_id, &10, &3_000, &0);
@@ -251,7 +251,7 @@ fn test_second_schedule_skipped_when_first_fills_to_cap() {
     let goal_id = make_goal(&env, &client, &owner, cap);
 
     // Pre-fill to (cap - 5) via add_to_goal so the first schedule can finish filling.
-    client.add_to_goal(&owner, &goal_id, &(cap - 5));
+    { let orchestrator = soroban_sdk::Address::from_string(&String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &(cap - 5)) };
 
     // Schedule 1: amount=5 → total becomes cap (exactly at limit, allowed).
     let sched1 = client.create_savings_schedule(&owner, &goal_id, &5, &3_000, &0);
@@ -335,7 +335,7 @@ fn test_archived_goal_schedule_skipped_missed_count_not_incremented() {
 
     // Create and complete a goal so it is eligible for archival.
     let goal_id = make_goal(&env, &client, &owner, 500);
-    client.add_to_goal(&owner, &goal_id, &500);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &500) };
 
     // Create a schedule while the goal is still active.
     let sched_id = client.create_savings_schedule(&owner, &goal_id, &100, &3_000, &86_400);
