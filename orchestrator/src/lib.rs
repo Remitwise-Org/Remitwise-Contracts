@@ -64,7 +64,13 @@ mod interface {
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, orchestrator: Address, epoch: u64, caller: Address, policy_id: u32);
+        fn pay_premium(
+            env: Env,
+            orchestrator: Address,
+            epoch: u64,
+            caller: Address,
+            policy_id: u32,
+        );
         fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
@@ -851,7 +857,10 @@ impl Orchestrator {
         let rs_addr: Address = env.storage().instance().get(&symbol_short!("RS_ADDR"))?;
 
         let rs_client = interface::RemittanceSplitClient::new(&env, &rs_addr);
-        let split = rs_client.get_split(&env.current_contract_address(), &Self::get_actor_epoch(&env));
+        let split = rs_client.get_split(
+            &env.current_contract_address(),
+            &Self::get_actor_epoch(&env),
+        );
 
         if split.len() != 4 {
             return None;
@@ -1142,10 +1151,12 @@ impl Orchestrator {
                 .try_bump_cross_contract_epoch(&orch);
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("SG_ADDR")) {
-            let _ = interface::SavingsGoalsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let _ =
+                interface::SavingsGoalsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("BP_ADDR")) {
-            let _ = interface::BillPaymentsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let _ =
+                interface::BillPaymentsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("INS_ADDR")) {
             let _ =
@@ -1567,14 +1578,15 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
-            let rejected_by_contract = match b_client.try_pay_bill(&orch, &epoch, caller, &routing.bill_id) {
-                Ok(Ok(_)) => {
-                    bills_done = true;
-                    None
-                }
-                Ok(Err(_)) => Some(true),
-                Err(_) => Some(false),
-            };
+            let rejected_by_contract =
+                match b_client.try_pay_bill(&orch, &epoch, caller, &routing.bill_id) {
+                    Ok(Ok(_)) => {
+                        bills_done = true;
+                        None
+                    }
+                    Ok(Err(_)) => Some(true),
+                    Err(_) => Some(false),
+                };
             if let Some(from_contract) = rejected_by_contract {
                 Self::emit_cross_contract_failure(env, symbol_short!("bills"), from_contract);
                 if compensate_on_failure {
@@ -1595,11 +1607,12 @@ impl Orchestrator {
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
-            let rejected_by_contract = match i_client.try_pay_premium(&orch, &epoch, caller, &routing.policy_id) {
-                Ok(Ok(_)) => None,
-                Ok(Err(_)) => Some(true),
-                Err(_) => Some(false),
-            };
+            let rejected_by_contract =
+                match i_client.try_pay_premium(&orch, &epoch, caller, &routing.policy_id) {
+                    Ok(Ok(_)) => None,
+                    Ok(Err(_)) => Some(true),
+                    Err(_) => Some(false),
+                };
             if let Some(from_contract) = rejected_by_contract {
                 Self::emit_cross_contract_failure(env, symbol_short!("insur"), from_contract);
                 if compensate_on_failure {
@@ -1612,7 +1625,15 @@ impl Orchestrator {
                         savings_amt,
                         savings_done,
                     );
-                    Self::compensate_bill(env, &orch, epoch, caller, routing.bill_id, bills_amt, bills_done);
+                    Self::compensate_bill(
+                        env,
+                        &orch,
+                        epoch,
+                        caller,
+                        routing.bill_id,
+                        bills_amt,
+                        bills_done,
+                    );
                     return Err(OrchestratorError::RemittanceFlowRolledBack);
                 }
                 return Err(OrchestratorError::CrossContractCallFailed);

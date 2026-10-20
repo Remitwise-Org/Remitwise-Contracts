@@ -2,8 +2,8 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use soroban_sdk::{
-    contracterror, contracttype, panic_with_error, symbol_short, Address, Bytes, BytesN, Env,
-    Map, Symbol, TryFromVal, Val,
+    contracterror, contracttype, panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Map,
+    Symbol, TryFromVal, Val,
 };
 pub mod tokens;
 pub use tokens::{
@@ -18,8 +18,8 @@ pub use tokens::{
 /// reviewable. Unit tests live in the module itself.
 pub mod amount;
 pub use amount::{
-    AmountOverflowError, AmountValidationError, MAX_AMOUNT, MIN_AMOUNT, checked_add_amount,
-    checked_sub_amount, validate_amount,
+    checked_add_amount, checked_sub_amount, validate_amount, AmountOverflowError,
+    AmountValidationError, MAX_AMOUNT, MIN_AMOUNT,
 };
 
 /// Shared period-key helpers: [`period::require_matching_period_key`] and
@@ -510,9 +510,7 @@ pub fn set_trusted_orchestrator(env: &Env, orchestrator: &Address) {
 
 /// Read the trusted orchestrator address, if one has been configured.
 pub fn get_trusted_orchestrator(env: &Env) -> Option<Address> {
-    env.storage()
-        .instance()
-        .get(&STORAGE_TRUSTED_ORCHESTRATOR)
+    env.storage().instance().get(&STORAGE_TRUSTED_ORCHESTRATOR)
 }
 
 /// Verify that the supplied `orchestrator` address is exactly the configured
@@ -541,8 +539,8 @@ pub fn require_trusted_orchestrator(
     env: &Env,
     orchestrator: &Address,
 ) -> Result<(), TrustedOrchestratorError> {
-    let trusted: Address = get_trusted_orchestrator(env)
-        .ok_or(TrustedOrchestratorError::NotConfigured)?;
+    let trusted: Address =
+        get_trusted_orchestrator(env).ok_or(TrustedOrchestratorError::NotConfigured)?;
     if orchestrator != &trusted {
         return Err(TrustedOrchestratorError::Unauthorized);
     }
@@ -562,8 +560,8 @@ pub fn verify_orchestrator_identity(
     env: &Env,
     orchestrator: &Address,
 ) -> Result<(), TrustedOrchestratorError> {
-    let trusted: Address = get_trusted_orchestrator(env)
-        .ok_or(TrustedOrchestratorError::NotConfigured)?;
+    let trusted: Address =
+        get_trusted_orchestrator(env).ok_or(TrustedOrchestratorError::NotConfigured)?;
     if orchestrator != &trusted {
         return Err(TrustedOrchestratorError::Unauthorized);
     }
@@ -586,8 +584,7 @@ pub fn guard_cross_contract_write(
     orchestrator: &Address,
     epoch: u64,
 ) -> Result<(), CrossContractEpochError> {
-    require_trusted_orchestrator(env, orchestrator)
-        .unwrap_or_else(|e| panic_with_error!(env, e));
+    require_trusted_orchestrator(env, orchestrator).unwrap_or_else(|e| panic_with_error!(env, e));
     require_matching_cross_contract_epoch(env, epoch)
 }
 
@@ -601,8 +598,7 @@ pub fn guard_cross_contract_read(
     orchestrator: &Address,
     epoch: u64,
 ) -> Result<(), CrossContractEpochError> {
-    verify_orchestrator_identity(env, orchestrator)
-        .unwrap_or_else(|e| panic_with_error!(env, e));
+    verify_orchestrator_identity(env, orchestrator).unwrap_or_else(|e| panic_with_error!(env, e));
     require_matching_cross_contract_epoch(env, epoch)
 }
 
