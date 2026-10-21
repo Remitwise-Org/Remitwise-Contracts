@@ -64,7 +64,13 @@ mod interface {
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, orchestrator: Address, epoch: u64, caller: Address, policy_id: u32);
+        fn pay_premium(
+            env: Env,
+            orchestrator: Address,
+            epoch: u64,
+            caller: Address,
+            policy_id: u32,
+        );
         fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
@@ -188,6 +194,10 @@ const ACTOR_EPOCH: Symbol = symbol_short!("ACT_EPOCH");
 ///
 /// Captures critical instance storage before a contract upgrade so state
 /// can be restored if the upgrade fails or produces inconsistent results.
+///
+/// Per-executor [`FlowRoute`] entries live in *persistent* storage and are
+/// intentionally excluded here (only the default route, via
+/// `goal_id`/`bill_id`/`policy_id`, is captured) — see [`FlowRoute`].
 #[contracttype]
 #[derive(Clone)]
 pub struct PreUpgradeSnapshot {
@@ -278,6 +288,53 @@ pub struct RemittanceFlowParams {
     pub policy_id: u32,
 }
 
+/// Per-executor routing overrides for the signed remittance flow.
+///
+/// Stored in *persistent* storage keyed by `(symbol_short!("ROUTE"), executor)`
+/// rather than instance storage, because the number of executors is unbounded
+/// and must not inflate the instance entry. An executor with no entry falls
+/// back to the owner-controlled default (`GOAL_ID`/`BILL_ID`/`POL_ID` in
+/// instance storage, seeded to `1/1/1` at init).
+///
+/// Deliberately **not** part of [`PreUpgradeSnapshot`]: routes are per-executor
+/// persistent data, not critical instance state, and carrying an unbounded map
+/// in the snapshot would blow the instance entry budget. The default route is
+/// still captured via the `GOAL_ID`/`BILL_ID`/`POL_ID` fields.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlowRoute {
+    /// Savings goal id the executor's flow pays into.
+    pub goal_id: u32,
+    /// Bill id the executor's flow pays.
+    pub bill_id: u32,
+    /// Insurance policy id the executor's flow pays.
+    pub policy_id: u32,
+    /// Ledger timestamp of the most recent write.
+    pub updated_at: u64,
+}
+
+/// Storage key for an executor's [`FlowRoute`] entry.
+fn flow_route_key(executor: &Address) -> (Symbol, Address) {
+    (symbol_short!("ROUTE"), executor.clone())
+}
+
+/// Read an executor's [`FlowRoute`], bumping the persistent TTL on hit.
+///
+/// Shared by the public `get_flow_route` view and the signed-flow/fan-out
+/// resolution path so a route that is actively read is never archived.
+fn read_flow_route(env: &Env, executor: &Address) -> Option<FlowRoute> {
+    let key = flow_route_key(executor);
+    let route: Option<FlowRoute> = env.storage().persistent().get(&key);
+    if route.is_some() {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+    route
+}
+
 /// Resolved downstream targets for the remittance fan-out.
 #[derive(Clone)]
 struct FlowRouting {
@@ -349,6 +406,22 @@ impl FlowRouting {
                 .unwrap_or(1),
         })
     }
+
+    /// Resolve routing for a specific executor.
+    ///
+    /// Dependency addresses and the owner-controlled default ids come from
+    /// instance storage (`from_storage`); when the executor has a per-executor
+    /// [`FlowRoute`], its ids override the defaults. Addresses are never
+    /// overridable per executor.
+    fn for_executor(env: &Env, executor: &Address) -> Result<Self, OrchestratorError> {
+        let mut routing = Self::from_storage(env)?;
+        if let Some(route) = read_flow_route(env, executor) {
+            routing.goal_id = route.goal_id;
+            routing.bill_id = route.bill_id;
+            routing.policy_id = route.policy_id;
+        }
+        Ok(routing)
+    }
 }
 
 #[contracterror]
@@ -388,6 +461,9 @@ pub enum OrchestratorError {
     SnapshotTooOld = 14,
     /// The actor epoch does not match the contract's current epoch.
     EpochMismatch = 15,
+    /// A route id was zero. Object ids are 1-based, so 0 is never a valid
+    /// goal/bill/policy id.
+    InvalidRoute = 16,
 }
 
 #[contract]
@@ -680,7 +756,7 @@ impl Orchestrator {
         // Execution parameter IDs are read from instance storage (defaults set
         // at init) and folded into the hash so relayers cannot redirect funds
         // to a different goal/bill/policy after signing.
-        let routing = FlowRouting::from_storage(&env)?;
+        let routing = FlowRouting::for_executor(&env, &executor)?;
         let expected_hash = Self::compute_request_hash(
             symbol_short!("flow"),
             nonce,
@@ -760,7 +836,7 @@ impl Orchestrator {
             .publish((symbol_short!("orch"), symbol_short!("flow_ep")), epoch);
 
         // --- #1339: read all dependency addresses and IDs in one pass ----------
-        let routing = FlowRouting::from_storage(&env)?;
+        let routing = FlowRouting::for_executor(&env, &executor)?;
 
         // --- #1339: single cross-contract call to fetch the configured split ---
         // `calculate_split` returns [spending, savings, bills, insurance] amounts.
@@ -817,6 +893,155 @@ impl Orchestrator {
         })
     }
 
+    /// Set the calling executor's routing for the signed remittance flow.
+    ///
+    /// The route is stored in *persistent* storage under
+    /// `(symbol_short!("ROUTE"), executor)` and overrides the owner-controlled
+    /// default for that executor only. Rejected while a flow is in flight
+    /// (`EXEC_LOCK` held) so a route can never change underneath a flow that has
+    /// already started.
+    ///
+    /// # Authorization
+    /// The `executor` address must authorize the call.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `executor` did not authorize
+    /// - `InvalidRoute` if any id is 0 (object ids are 1-based)
+    /// - `ExecutionLocked` if a flow is currently executing
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("orch"), symbol_short!("route_set"))` with
+    /// `(executor, goal_id, bill_id, policy_id)`.
+    pub fn set_flow_route(
+        env: Env,
+        executor: Address,
+        goal_id: u32,
+        bill_id: u32,
+        policy_id: u32,
+    ) -> Result<(), OrchestratorError> {
+        executor.require_auth();
+
+        if goal_id == 0 || bill_id == 0 || policy_id == 0 {
+            return Err(OrchestratorError::InvalidRoute);
+        }
+
+        Self::require_no_pending_ops(&env)?;
+
+        let route = FlowRoute {
+            goal_id,
+            bill_id,
+            policy_id,
+            updated_at: env.ledger().timestamp(),
+        };
+        let key = flow_route_key(&executor);
+        env.storage().persistent().set(&key, &route);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("route_set")),
+            (executor, goal_id, bill_id, policy_id),
+        );
+        Ok(())
+    }
+
+    /// Remove the calling executor's routing override, reverting it to the
+    /// owner-controlled default.
+    ///
+    /// # Authorization
+    /// The `executor` address must authorize the call.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `executor` did not authorize
+    /// - `ExecutionLocked` if a flow is currently executing
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("orch"), symbol_short!("route_clr"))` with `executor`.
+    pub fn clear_flow_route(env: Env, executor: Address) -> Result<(), OrchestratorError> {
+        executor.require_auth();
+
+        Self::require_no_pending_ops(&env)?;
+
+        env.storage()
+            .persistent()
+            .remove(&flow_route_key(&executor));
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("route_clr")),
+            executor,
+        );
+        Ok(())
+    }
+
+    /// Return an executor's route override, or `None` when it uses the default.
+    ///
+    /// Read-only; no authorization required. The persistent TTL is bumped when
+    /// an entry exists.
+    pub fn get_flow_route(env: Env, executor: Address) -> Option<FlowRoute> {
+        read_flow_route(&env, &executor)
+    }
+
+    /// Owner-only: replace the default route used by executors with no override.
+    ///
+    /// Writes the legacy instance keys `GOAL_ID`/`BILL_ID`/`POL_ID` so
+    /// [`FlowRouting::from_storage`] and [`PreUpgradeSnapshot`] continue to see
+    /// the current default. Zero ids are rejected.
+    ///
+    /// # Authorization
+    /// Only the stored `OWNER` may call this.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the owner
+    /// - `InvalidRoute` if any id is 0
+    /// - `ExecutionLocked` if a flow is currently executing
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("orch"), symbol_short!("def_route"))` with
+    /// `(caller, goal_id, bill_id, policy_id)`.
+    pub fn set_default_route(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        bill_id: u32,
+        policy_id: u32,
+    ) -> Result<(), OrchestratorError> {
+        caller.require_auth();
+
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .ok_or(OrchestratorError::Unauthorized)?;
+        if caller != owner {
+            return Err(OrchestratorError::Unauthorized);
+        }
+
+        if goal_id == 0 || bill_id == 0 || policy_id == 0 {
+            return Err(OrchestratorError::InvalidRoute);
+        }
+
+        Self::require_no_pending_ops(&env)?;
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOAL_ID"), &goal_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILL_ID"), &bill_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("POL_ID"), &policy_id);
+        Self::extend_instance_ttl(&env);
+
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("def_route")),
+            (caller, goal_id, bill_id, policy_id),
+        );
+        Ok(())
+    }
+
     /// Get the current execution nonce for an address.
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         Self::get_nonce_value(&env, &address)
@@ -851,7 +1076,10 @@ impl Orchestrator {
         let rs_addr: Address = env.storage().instance().get(&symbol_short!("RS_ADDR"))?;
 
         let rs_client = interface::RemittanceSplitClient::new(&env, &rs_addr);
-        let split = rs_client.get_split(&env.current_contract_address(), &Self::get_actor_epoch(&env));
+        let split = rs_client.get_split(
+            &env.current_contract_address(),
+            &Self::get_actor_epoch(&env),
+        );
 
         if split.len() != 4 {
             return None;
@@ -1142,10 +1370,12 @@ impl Orchestrator {
                 .try_bump_cross_contract_epoch(&orch);
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("SG_ADDR")) {
-            let _ = interface::SavingsGoalsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let _ =
+                interface::SavingsGoalsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("BP_ADDR")) {
-            let _ = interface::BillPaymentsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
+            let _ =
+                interface::BillPaymentsClient::new(env, &addr).try_bump_cross_contract_epoch(&orch);
         }
         if let Some(addr) = env.storage().instance().get(&symbol_short!("INS_ADDR")) {
             let _ =
@@ -1483,7 +1713,7 @@ impl Orchestrator {
         executor: &Address,
         amount: i128,
     ) -> Result<bool, OrchestratorError> {
-        let routing = FlowRouting::from_storage(env)?;
+        let routing = FlowRouting::for_executor(env, executor)?;
         Self::run_remittance_fan_out(env, executor, amount, &routing, true)?;
         Ok(true)
     }
@@ -1567,14 +1797,15 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
-            let rejected_by_contract = match b_client.try_pay_bill(&orch, &epoch, caller, &routing.bill_id) {
-                Ok(Ok(_)) => {
-                    bills_done = true;
-                    None
-                }
-                Ok(Err(_)) => Some(true),
-                Err(_) => Some(false),
-            };
+            let rejected_by_contract =
+                match b_client.try_pay_bill(&orch, &epoch, caller, &routing.bill_id) {
+                    Ok(Ok(_)) => {
+                        bills_done = true;
+                        None
+                    }
+                    Ok(Err(_)) => Some(true),
+                    Err(_) => Some(false),
+                };
             if let Some(from_contract) = rejected_by_contract {
                 Self::emit_cross_contract_failure(env, symbol_short!("bills"), from_contract);
                 if compensate_on_failure {
@@ -1595,11 +1826,12 @@ impl Orchestrator {
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
-            let rejected_by_contract = match i_client.try_pay_premium(&orch, &epoch, caller, &routing.policy_id) {
-                Ok(Ok(_)) => None,
-                Ok(Err(_)) => Some(true),
-                Err(_) => Some(false),
-            };
+            let rejected_by_contract =
+                match i_client.try_pay_premium(&orch, &epoch, caller, &routing.policy_id) {
+                    Ok(Ok(_)) => None,
+                    Ok(Err(_)) => Some(true),
+                    Err(_) => Some(false),
+                };
             if let Some(from_contract) = rejected_by_contract {
                 Self::emit_cross_contract_failure(env, symbol_short!("insur"), from_contract);
                 if compensate_on_failure {
@@ -1612,7 +1844,15 @@ impl Orchestrator {
                         savings_amt,
                         savings_done,
                     );
-                    Self::compensate_bill(env, &orch, epoch, caller, routing.bill_id, bills_amt, bills_done);
+                    Self::compensate_bill(
+                        env,
+                        &orch,
+                        epoch,
+                        caller,
+                        routing.bill_id,
+                        bills_amt,
+                        bills_done,
+                    );
                     return Err(OrchestratorError::RemittanceFlowRolledBack);
                 }
                 return Err(OrchestratorError::CrossContractCallFailed);
@@ -1984,18 +2224,75 @@ mod tests_nonce_eviction {
 
     #[contractimpl]
     impl MockSimpleContract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
+        pub fn remove_from_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_payment(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) {
+        }
     }
 
     const BASE_TIME: u64 = 1_000;

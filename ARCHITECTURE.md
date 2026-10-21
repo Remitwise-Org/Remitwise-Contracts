@@ -223,6 +223,8 @@ Instance Storage:
 - Signed flow with nonce replay protection, deadline window, and request-hash binding
 - `EXEC_LOCK` reentrancy guard held across the entire fan-out
 - Best-effort compensation on partial failure in the signed path
+- Per-executor goal/bill/policy routing (`set_flow_route`) with an
+  owner-controlled default (`set_default_route`)
 
 **Signed payload and request hash:**
 
@@ -234,11 +236,16 @@ The signed entrypoint `execute_remittance_flow_signed(executor, amount, nonce, d
 | `nonce` | Caller-supplied sequential counter |
 | `amount` | Caller-supplied remittance total |
 | `deadline` | Caller-supplied ledger timestamp upper bound |
-| `goal_id` | Instance storage `GOAL_ID` (default `1` at init) |
-| `bill_id` | Instance storage `BILL_ID` (default `1` at init) |
-| `policy_id` | Instance storage `POL_ID` (default `1` at init) |
+| `goal_id` | Executor's `FlowRoute.goal_id`, else default `GOAL_ID` (`1` at init) |
+| `bill_id` | Executor's `FlowRoute.bill_id`, else default `BILL_ID` (`1` at init) |
+| `policy_id` | Executor's `FlowRoute.policy_id`, else default `POL_ID` (`1` at init) |
 
-Relayers must read the current execution parameter IDs from contract storage before signing. If an owner updates these IDs, previously signed authorizations become invalid (`InvalidNonce`) unless re-signed with the new IDs.
+Relayers must resolve the executor's *effective* routing before signing: the
+per-executor `FlowRoute` when one is set, otherwise the owner-controlled
+default. If the executor changes their route (`set_flow_route` /
+`clear_flow_route`) or the owner updates the default (`set_default_route`),
+previously signed authorizations become invalid (`InvalidNonce`) unless
+re-signed with the new IDs.
 
 **Storage Structure:**
 
@@ -246,12 +253,16 @@ Relayers must read the current execution parameter IDs from contract storage bef
 Instance Storage:
 ├── OWNER: Address
 ├── FW_ADDR / RS_ADDR / SG_ADDR / BP_ADDR / INS_ADDR: dependency addresses
-├── GOAL_ID / BILL_ID / POL_ID: execution parameter defaults for signed flow
+├── GOAL_ID / BILL_ID / POL_ID: default execution parameters (owner-controlled via set_default_route)
 ├── EXEC_LOCK: bool
 ├── NONCES: Map<Address, u64>
 ├── USED_N: Map<Address, Vec<u64>>
 ├── STATS: ExecutionStats
 └── AUDIT: Vec<AuditEntry>
+
+Persistent Storage:
+├── (symbol_short!("ROUTE"), executor) -> FlowRoute: per-executor routing override
+└── SNAPSHOT_KEY: PreUpgradeSnapshot (per-executor routes excluded)
 ```
 
 **Relationships:**
