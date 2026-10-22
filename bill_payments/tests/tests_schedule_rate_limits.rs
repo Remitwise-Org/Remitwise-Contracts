@@ -404,21 +404,28 @@ fn test_cancel_schedule_clean_state() {
 #[test]
 fn test_execute_schedule_caps_bills_created() {
     let h = ScheduleRateHarness::new(1_000_000);
-    let past_due = 999_999u64; // already in the past
+    let due = h.now + 1;
 
     let extra = 10u32;
     let total_schedules = MAX_BILLS_PER_SCHEDULE_EXECUTION + extra;
+    let second_owner = Address::generate(&h.env);
     for i in 0..total_schedules {
+        let owner = if i < MAX_BILLS_PER_SCHEDULE_EXECUTION {
+            &h.owner
+        } else {
+            &second_owner
+        };
         h.client.create_bill_schedule(
-            &h.owner,
+            owner,
             &String::from_str(&h.env, "Due"),
             &10,
             &String::from_str(&h.env, "XLM"),
-            &past_due,
+            &due,
             &(SECONDS_PER_DAY),
         );
     }
 
+    h.env.ledger().set_timestamp(due);
     let executed = h.client.execute_due_bill_schedules();
     assert_eq!(
         executed.len(),
@@ -428,18 +435,61 @@ fn test_execute_schedule_caps_bills_created() {
 
     // Count bills created by this execution
     let mut bills_created = 0u32;
-    for schedule_id in 1..=total_schedules {
-        let id = schedule_id + 1; // bill IDs start after schedule IDs (roughly)
+    for id in 1..=total_schedules {
         if h.client.get_bill(&id).is_some() {
             bills_created += 1;
         }
     }
 
-    // At most MAX_BILLS_PER_SCHEDULE_EXECUTION bills should have been created
-    assert!(
-        bills_created <= MAX_BILLS_PER_SCHEDULE_EXECUTION,
-        "must not create more than {MAX_BILLS_PER_SCHEDULE_EXECUTION} bills per call; created {bills_created}"
+    assert_eq!(
+        bills_created, MAX_BILLS_PER_SCHEDULE_EXECUTION,
+        "exactly {MAX_BILLS_PER_SCHEDULE_EXECUTION} bills should be created"
     );
+}
+
+#[test]
+fn schedule_cap_counts_across_owners() {
+    let h = ScheduleRateHarness::new(1_000_000);
+    let due = h.now + 1;
+    let owners = [
+        h.owner.clone(),
+        Address::generate(&h.env),
+        Address::generate(&h.env),
+    ];
+
+    for owner in &owners {
+        for _ in 0..20 {
+            h.client.create_bill_schedule(
+                owner,
+                &String::from_str(&h.env, "Shared cap"),
+                &10,
+                &String::from_str(&h.env, "XLM"),
+                &due,
+                &SECONDS_PER_DAY,
+            );
+        }
+    }
+
+    h.env.ledger().set_timestamp(due);
+    let executed = h.client.execute_due_bill_schedules();
+    assert_eq!(executed.len(), 60);
+
+    let mut bills_created = 0u32;
+    for id in 1..=60 {
+        if h.client.get_bill(&id).is_some() {
+            bills_created += 1;
+        }
+    }
+    assert_eq!(bills_created, MAX_BILLS_PER_SCHEDULE_EXECUTION);
+
+    for owner in &owners {
+        let schedules = h.client.get_bill_schedules(owner);
+        assert_eq!(schedules.len(), 20);
+        for schedule in schedules.iter() {
+            assert!(schedule.last_executed.is_some());
+            assert!(schedule.next_due > h.now);
+        }
+    }
 }
 
 /// Schedules still advance their `next_due` and `last_executed` even when the
@@ -447,43 +497,36 @@ fn test_execute_schedule_caps_bills_created() {
 #[test]
 fn test_execute_schedule_advances_state_even_at_cap() {
     let h = ScheduleRateHarness::new(1_000_000);
-    let past_due = 999_999u64;
+    let due = h.now + 1;
+    let second_owner = Address::generate(&h.env);
+    let target_owner = Address::generate(&h.env);
 
-    // Create exactly 1 schedule at the cap boundary
-    let schedule_id = h.client.create_bill_schedule(
-        &h.owner,
-        &String::from_str(&h.env, "Cap"),
-        &100,
-        &String::from_str(&h.env, "XLM"),
-        &past_due,
-        &(SECONDS_PER_DAY),
-    );
+    for i in 0..MAX_BILLS_PER_SCHEDULE_EXECUTION {
+        let owner = if i < MAX_BILLS_PER_SCHEDULE_EXECUTION / 2 {
+            &h.owner
+        } else {
+            &second_owner
+        };
+        h.client.create_bill_schedule(
+            owner,
+            &String::from_str(&h.env, "Filler"),
+            &50,
+            &String::from_str(&h.env, "XLM"),
+            &due,
+            &SECONDS_PER_DAY,
+        );
+    }
 
-    // Fill the cap with a different schedule
-    let filler_id = h.client.create_bill_schedule(
-        &h.owner,
-        &String::from_str(&h.env, "Fill"),
-        &50,
-        &String::from_str(&h.env, "XLM"),
-        &past_due,
-        &(SECONDS_PER_DAY),
-    );
-
-    // Set up many schedules so the cap is hit before our target
-    // We want the target to be the first schedule (id=1) so it gets executed
-    // but the filler (id=2) may or may not depending on cap.
-    // Actually, schedule ID 1 is the target. Let's test it differently.
-
-    // Simpler approach: create 1 recurring schedule at past due
     let target = h.client.create_bill_schedule(
-        &h.owner,
+        &target_owner,
         &String::from_str(&h.env, "Target"),
         &100,
         &String::from_str(&h.env, "XLM"),
-        &past_due,
+        &due,
         &(SECONDS_PER_DAY),
     );
 
+    h.env.ledger().set_timestamp(due);
     let _ = h.client.execute_due_bill_schedules();
 
     let sched = h.client.get_bill_schedule(&target).unwrap();

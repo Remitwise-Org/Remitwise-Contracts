@@ -398,6 +398,11 @@ fn get_all_storage_keys() -> Vec<StorageKey> {
             contract: "orchestrator",
             description: "Rotating audit log",
         },
+        StorageKey {
+            key: "KS_ADDR",
+            contract: "orchestrator",
+            description: "Emergency killswitch contract address",
+        },
     ]
 }
 

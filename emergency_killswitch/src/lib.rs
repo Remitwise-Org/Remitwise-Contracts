@@ -30,9 +30,12 @@ pub enum Error {
     AlreadyMigrated = 18,
     /// A previous migration did not complete — call `migrate_storage` again.
     MigrationIncomplete = 19,
+    /// Checked arithmetic overflow (epoch increment, recovery-deadline
+    /// computation, migration step advance, or an inverted snapshot clock).
+    Overflow = 20,
     /// The cursor value is not valid for this collection (e.g. not produced by a
     /// previous page call).
-    InvalidCursor = 20,
+    InvalidCursor = 21,
 }
 
 /// The exact pause surface affected by a threshold-approved activation.
@@ -111,6 +114,44 @@ pub const SNAPSHOT_TTL: u64 = 86_400; // 24 hours
 /// documented upgrade workflow when the on-wire event shape changes, and
 /// keep old shapes documented side-by-side in `docs/EVENTS.md`.
 pub const EVENT_VERSION: u32 = 1;
+
+// ── Checked-arithmetic helpers ──────────────────────────────────────────────
+//
+// Storage-free, side-effect-free wrappers around the primitive checked
+// operations so every overflow path in the contract maps to the same
+// [`Error::Overflow`] discriminant (20, pinned — see `CHANGELOG_CONTRACTS.md`).
+
+/// Crate-visible checked `u64` addition. Returns [`Error::Overflow`] when the
+/// sum would wrap past `u64::MAX`.
+#[inline]
+pub(crate) fn checked_add_u64(a: u64, b: u64) -> Result<u64, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Crate-visible checked `u32` addition. Returns [`Error::Overflow`] when the
+/// sum would wrap past `u32::MAX`.
+#[inline]
+pub(crate) fn checked_add_u32(a: u32, b: u32) -> Result<u32, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Compute the recovery deadline `now + RECOVERY_DELAY` with checked
+/// arithmetic.  Never saturates: a near-`u64::MAX` clock returns
+/// [`Error::Overflow`] so callers reject **before** writing any activation
+/// markers (see `activate`).
+#[inline]
+pub(crate) fn recovery_ready_at(now: u64) -> Result<u64, Error> {
+    checked_add_u64(now, RECOVERY_DELAY)
+}
+
+/// Compute the snapshot age `now - taken_at` with checked arithmetic.
+/// Returns [`Error::Overflow`] when the ledger clock is *before* the snapshot
+/// timestamp (inverted clock), so restore can never treat a future-dated
+/// snapshot as instantly expired.
+#[inline]
+pub(crate) fn snapshot_age(now: u64, taken_at: u64) -> Result<u64, Error> {
+    now.checked_sub(taken_at).ok_or(Error::Overflow)
+}
 
 /// Versioned, complete, correlation-tagged audit record emitted by **every
 /// committed** emergency transition.
@@ -495,15 +536,21 @@ impl EmergencyKillswitch {
             _ => None,
         };
 
+        // Compute the recovery deadline with checked arithmetic *before* any
+        // writes.  A near-`u64::MAX` ledger clock must return
+        // [`Error::Overflow`] with zero state mutation — the previous
+        // `saturating_add` here silently pinned the deadline at `u64::MAX`,
+        // making recovery impossible without ever surfacing the overflow.
+        let recovery_ready = recovery_ready_at(env.ledger().timestamp())?;
+
         // ── Phase 2: write everything — all checks passed ────────────────────
         env.storage()
             .instance()
             .set(&DataKey::ActivationEpoch, &epoch);
         env.storage().instance().set(&DataKey::ActiveScope, &scope);
-        env.storage().instance().set(
-            &DataKey::RecoveryReadyAt,
-            &(env.ledger().timestamp().saturating_add(RECOVERY_DELAY)),
-        );
+        env.storage()
+            .instance()
+            .set(&DataKey::RecoveryReadyAt, &recovery_ready);
         env.storage()
             .instance()
             .set(&DataKey::ScopeWasPaused, &scope_was_paused);
@@ -2804,14 +2851,170 @@ mod snapshot_function_pause_restore_tests {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Checked-arithmetic helper and overflow regression tests (Issue #1865)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod arithmetic_overflow_regression_tests {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::vec;
+
+    fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        (env, client, admin, contract_id)
+    }
+
+    // ── checked_add_u64 / checked_add_u32 ──────────────────────────────────
+
+    /// `checked_add_u64(u64::MAX, 1)` returns `Error::Overflow`; the happy
+    /// path returns the exact sum.
+    #[test]
+    fn checked_add_u64_overflow_and_happy_path() {
+        assert_eq!(checked_add_u64(u64::MAX, 1), Err(Error::Overflow));
+        assert_eq!(checked_add_u64(1, 1), Ok(2));
+    }
+
+    /// `checked_add_u32(u32::MAX, 1)` returns `Error::Overflow`; the happy
+    /// path returns the exact sum.
+    #[test]
+    fn checked_add_u32_overflow_and_happy_path() {
+        assert_eq!(checked_add_u32(u32::MAX, 1), Err(Error::Overflow));
+        assert_eq!(checked_add_u32(1, 1), Ok(2));
+    }
+
+    // ── recovery_ready_at ──────────────────────────────────────────────────
+
+    /// `recovery_ready_at` must reject `u64::MAX - (RECOVERY_DELAY - 1)`
+    /// (i.e. `u64::MAX - 3599`, whose sum would wrap) and accept
+    /// `u64::MAX - RECOVERY_DELAY` exactly (no saturation).
+    #[test]
+    fn recovery_ready_at_boundary_overflows_one_second_early() {
+        assert_eq!(
+            recovery_ready_at(u64::MAX - (RECOVERY_DELAY - 1)),
+            Err(Error::Overflow)
+        );
+        assert_eq!(recovery_ready_at(u64::MAX - RECOVERY_DELAY), Ok(u64::MAX));
+    }
+
+    // ── Future-dated snapshot ──────────────────────────────────────────────
+
+    /// A snapshot taken at a timestamp *after* the current ledger clock makes
+    /// `snapshot_age` underflow.  `restore_from_snapshot` must reject with
+    /// `Error::Overflow` and leave every piece of state — including the
+    /// snapshot itself — untouched.  Once the clock catches up, the same
+    /// snapshot restores successfully, proving the failure consumed nothing.
+    #[test]
+    fn future_dated_snapshot_restore_overflows_and_preserves_state() {
+        let (env, client, admin, _contract_id) = setup();
+        env.ledger().set_timestamp(10_000);
+        client.pause();
+        client.pre_upgrade(&admin);
+        assert!(client.is_paused());
+        assert_eq!(client.get_paused_since(), Some(10_000));
+
+        // Move the clock *backwards* so `now < taken_at`.
+        env.ledger().set_timestamp(5_000);
+        let res = client.try_restore_from_snapshot(&admin);
+        assert_eq!(res, Err(Ok(Error::Overflow)));
+
+        // State unchanged: still paused with the original `PausedSince`, and
+        // the snapshot was not consumed by the failed attempt.
+        assert!(client.is_paused());
+        assert_eq!(client.get_paused_since(), Some(10_000));
+
+        // Clock catches up to the snapshot timestamp — restore now succeeds,
+        // proving the snapshot survived the failed (overflow) attempt.
+        env.ledger().set_timestamp(10_000);
+        assert_eq!(client.try_restore_from_snapshot(&admin), Ok(Ok(())));
+        assert!(client.is_paused());
+        assert_eq!(client.get_paused_since(), Some(10_000));
+    }
+
+    // ── Snapshot TTL boundary ──────────────────────────────────────────────
+
+    /// Restore succeeds at exactly `SNAPSHOT_TTL` seconds after capture and
+    /// fails with `SnapshotExpired` at `SNAPSHOT_TTL + 1`, with post-snapshot
+    /// mutations preserved on the failure path.
+    #[test]
+    fn snapshot_ttl_boundary_exactly_ok_one_second_later_expires() {
+        let (env, client, admin, _contract_id) = setup();
+
+        // Exactly at the TTL boundary: restore must succeed.
+        env.ledger().set_timestamp(1_000);
+        client.pause();
+        client.pre_upgrade(&admin);
+        env.ledger().set_timestamp(1_000 + SNAPSHOT_TTL);
+        assert_eq!(client.try_restore_from_snapshot(&admin), Ok(Ok(())));
+        assert!(client.is_paused());
+
+        // One second past the TTL: restore must expire and leave state alone.
+        client.clear_emergency_state();
+        client.pre_upgrade(&admin);
+        env.ledger()
+            .set_timestamp(1_000 + SNAPSHOT_TTL + SNAPSHOT_TTL + 1);
+        let res = client.try_restore_from_snapshot(&admin);
+        assert_eq!(res, Err(Ok(Error::SnapshotExpired)));
+        // The post-snapshot mutation (cleared) survives the failed restore.
+        assert!(!client.is_paused());
+    }
+
+    // ── Signer epoch at u64::MAX ───────────────────────────────────────────
+
+    /// Configuring signers while the stored signer epoch is `u64::MAX` must
+    /// return `Error::Overflow` from the epoch increment and preserve the
+    /// previously configured signer set and threshold.
+    #[test]
+    fn configure_signers_at_u64_max_epoch_overflows_and_preserves_signers() {
+        let (env, client, admin, contract_id) = setup();
+        let first = Address::generate(&env);
+        let second = Address::generate(&env);
+        let original = vec![&env, first.clone(), second.clone()];
+        client.configure_signers(&admin, &original, &2);
+        assert_eq!(client.get_signer_epoch(), 1);
+        assert_eq!(client.get_signer_threshold(), 2);
+
+        // Pin the signer epoch at u64::MAX so the next increment overflows.
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::SignerEpoch, &u64::MAX);
+        });
+        assert_eq!(client.get_signer_epoch(), u64::MAX);
+
+        // A rotation attempt must overflow before any signer state is written.
+        let replacement = Address::generate(&env);
+        let next = vec![&env, second.clone(), replacement];
+        let res = client.try_configure_signers(&admin, &next, &1);
+        assert_eq!(res, Err(Ok(Error::Overflow)));
+
+        // The previously configured signer set is untouched.
+        assert_eq!(client.get_signer_epoch(), u64::MAX);
+        assert_eq!(client.get_signer_threshold(), 2);
+        let signers = client.list_signers_page(&None, &10);
+        assert_eq!(signers.len(), 2);
+        assert!(signers.contains(first));
+        assert!(signers.contains(second));
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Pagination and cursor semantics tests (Issue #1762)
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod pagination_tests {
+    extern crate std;
+    use std::format;
+
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::symbol_short;
+    use soroban_sdk::{symbol_short, vec};
 
     fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
         let env = Env::default();
@@ -2828,7 +3031,7 @@ mod pagination_tests {
     /// Before configure_signers, list_signers_page returns empty.
     #[test]
     fn signers_page_empty_before_config() {
-        let (env, client, _admin) = setup();
+        let (_env, client, _admin) = setup();
         let result = client.list_signers_page(&None, &10);
         assert_eq!(result.len(), 0);
     }
@@ -2843,7 +3046,7 @@ mod pagination_tests {
         let second = Address::generate(&env);
         let third = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone(), third.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&None, &10);
         assert_eq!(result.len(), 3);
@@ -2861,7 +3064,7 @@ mod pagination_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let page1 = client.list_signers_page(&None, &2);
         assert_eq!(page1.len(), 2);
@@ -2881,7 +3084,7 @@ mod pagination_tests {
         let (env, client, admin) = setup();
         let first = Address::generate(&env);
         let signers = vec![&env, first];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&None, &100);
         assert_eq!(result.len(), 1);
@@ -2893,9 +3096,11 @@ mod pagination_tests {
     #[test]
     fn signers_page_multi_page_cursor_progression() {
         let (env, client, admin) = setup();
-        let addrs: Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
-        let signers = vec![&env, addrs[0].clone(), addrs[1].clone(), addrs[2].clone(), addrs[3].clone(), addrs[4].clone()];
-        client.configure_signers(&admin, &signers, 1);
+        let mut signers = Vec::new(&env);
+        for _ in 0..5 {
+            signers.push_back(Address::generate(&env));
+        }
+        client.configure_signers(&admin, &signers, &1);
 
         let page1 = client.list_signers_page(&None, &2);
         assert_eq!(page1.len(), 2);
@@ -2920,13 +3125,13 @@ mod pagination_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let page_none = client.list_signers_page(&None, &10);
         let page_zero = client.list_signers_page(&Some(0), &10);
         assert_eq!(page_none.len(), page_zero.len());
-        assert!(page_none.contains(first));
-        assert!(page_zero.contains(first));
+        assert!(page_none.contains(&first));
+        assert!(page_zero.contains(&first));
     }
 
     // ── list_signers_page: invalid cursor rejected ─────────────────────────
@@ -2937,7 +3142,7 @@ mod pagination_tests {
         let (env, client, admin) = setup();
         let first = Address::generate(&env);
         let signers = vec![&env, first];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&Some(999), &10);
         assert_eq!(result.len(), 0);
@@ -2950,12 +3155,11 @@ mod pagination_tests {
     fn signers_page_large_result_clamped() {
         let (env, client, admin) = setup();
         let mut signers_vec = Vec::new(&env);
-        let mut expected_count = 0u32;
         for _ in 0..60 {
             signers_vec.push_back(Address::generate(&env));
-            expected_count += 1;
         }
-        client.configure_signers(&admin, &signers_vec, 1);
+        assert_eq!(signers_vec.len(), 60);
+        client.configure_signers(&admin, &signers_vec, &1);
 
         // Request 100 but should get MAX_PAGE_LIMIT (50)
         let page1 = client.list_signers_page(&None, &100);
@@ -2976,7 +3180,7 @@ mod pagination_tests {
         for _ in 0..30 {
             signers_vec.push_back(Address::generate(&env));
         }
-        client.configure_signers(&admin, &signers_vec, 1);
+        client.configure_signers(&admin, &signers_vec, &1);
 
         let page = client.list_signers_page(&None, &0);
         assert_eq!(page.len(), DEFAULT_PAGE_LIMIT);
@@ -3019,7 +3223,7 @@ mod pagination_tests {
         let (_env, client, _admin) = setup();
         let module = symbol_short!("bill");
         for i in 0..5 {
-            client.pause_function(&module, &Symbol::new(&_env, &format!("f{}", i)));
+            client.pause_function(&module, &Symbol::new(&_env, &format!("f{i}")));
         }
 
         let page1 = client.list_paused_functions_page(&module, &None, &2);
@@ -3100,7 +3304,7 @@ mod pagination_tests {
         let (_env, client, _admin) = setup();
         let module = symbol_short!("bill");
         for i in 0..8 {
-            client.pause_function(&module, &Symbol::new(&_env, &format!("f{}", i)));
+            client.pause_function(&module, &Symbol::new(&_env, &format!("f{i}")));
         }
         let result = client.list_paused_functions_page(&module, &None, &200);
         assert_eq!(result.len(), 8);

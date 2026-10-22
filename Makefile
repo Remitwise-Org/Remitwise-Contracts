@@ -4,8 +4,8 @@ BINDINGS_DIR := bindings
 
 .PHONY: wasm bindings build
 
-# Builds every contract's release WASM in one command, matching what CI's
-# "Build workspace (WASM)" step does -- see .github/workflows/ci.yml.
+# Builds release WASMs for contracts that build cleanly, matching CI.
+# See .github/workflows/ci.yml and .github/workflows/release-wasm.yml.
 wasm:
 	cargo build --release --target wasm32-unknown-unknown
 	@echo "WASM output: $(WASM_DIR)/*.wasm"

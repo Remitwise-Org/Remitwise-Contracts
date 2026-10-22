@@ -11,6 +11,7 @@ publish = false
 [workspace]
 members = [
     "emergency_killswitch",
+    "bill_payments",
     "family_wallet",
     "data_migration",
     "reporting",
@@ -20,12 +21,11 @@ members = [
     "testutils",
     "integration_tests",
     "remitwise-common",
+    "savings_goals",
 ]
 exclude = [
-    "bill_payments",
     "insurance",
     "remittance_split",
-    "savings_goals",
 ]
 default-members = [
     "family_wallet",

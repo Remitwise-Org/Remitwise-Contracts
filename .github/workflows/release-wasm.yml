@@ -23,38 +23,28 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache Cargo dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-release-
+        uses: Swatinem/rust-cache@v2
 
-      # Only emergency_killswitch is built here, matching ci.yml: it is the
-      # one crate CI currently trusts to build cleanly on wasm32-unknown-unknown
-      # (see ci.yml's "Build emergency_killswitch (WASM)" step). Extend this
-      # list as other crates rejoin the WASM build.
-      - name: Build emergency_killswitch (WASM release)
+      - name: Build orchestrator and reporting (WASM release)
         run: |
-          cargo build --release --target wasm32-unknown-unknown -p emergency_killswitch --verbose
+          cargo build --release --target wasm32-unknown-unknown -p orchestrator -p reporting --verbose
 
-      - name: Verify WASM file exists
+      - name: Verify WASM files exist
         run: |
-          wasm_file="target/wasm32-unknown-unknown/release/emergency_killswitch.wasm"
-          if [ ! -f "$wasm_file" ]; then
-            echo "Error: WASM file not found: $wasm_file"
-            exit 1
-          fi
-          echo "✓ Found: $wasm_file ($(du -h "$wasm_file" | cut -f1))"
+          for contract in orchestrator reporting; do
+            wasm_file="target/wasm32-unknown-unknown/release/${contract}.wasm"
+            if [ ! -f "$wasm_file" ]; then
+              echo "Error: WASM file not found: $wasm_file"
+              exit 1
+            fi
+            echo "✓ Found: $wasm_file ($(du -h "$wasm_file" | cut -f1))"
+          done
 
       - name: Publish WASM to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/wasm32-unknown-unknown/release/*.wasm
+          files: |
+            target/wasm32-unknown-unknown/release/orchestrator.wasm
+            target/wasm32-unknown-unknown/release/reporting.wasm
           fail_on_unmatched_files: true
           generate_release_notes: true

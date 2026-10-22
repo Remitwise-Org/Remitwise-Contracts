@@ -2,7 +2,7 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
-    Env, IntoVal, Map, TryFromVal, Val, Vec,
+    Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec,
 };
 mod utils;
 use utils::u64_to_u32;
@@ -52,7 +52,7 @@ pub const MAX_ITEMS_PER_REPORT: u32 = remitwise_common::MAX_TOP_N;
 /// See `docs/HEALTH_SCORE.md` (at the repository root) for the full scoring
 /// model, inputs, and worked examples.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HealthScore {
     /// Overall score, clamped to `0..=100`.
     pub score: u32,
@@ -66,7 +66,7 @@ pub struct HealthScore {
 
 /// Category breakdown with amount and percentage
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CategoryBreakdown {
     pub category: Category,
     pub amount: i128,
@@ -75,7 +75,7 @@ pub struct CategoryBreakdown {
 
 /// Trend data comparing two periods
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TrendData {
     pub current_amount: i128,
     pub previous_amount: i128,
@@ -97,7 +97,7 @@ pub enum DataAvailability {
 
 /// Remittance summary report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RemittanceSummary {
     pub total_received: i128,
     pub total_allocated: i128,
@@ -109,7 +109,7 @@ pub struct RemittanceSummary {
 
 /// Savings progress report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SavingsReport {
     pub total_goals: u32,
     pub completed_goals: u32,
@@ -122,7 +122,7 @@ pub struct SavingsReport {
 
 /// Bill payment compliance report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BillComplianceReport {
     pub total_bills: u32,
     pub paid_bills: u32,
@@ -139,7 +139,7 @@ pub struct BillComplianceReport {
 
 /// Insurance coverage report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InsuranceReport {
     pub active_policies: u32,
     pub total_coverage: i128,
@@ -156,7 +156,7 @@ pub struct InsuranceReport {
 /// See `reporting/docs/FAMILY_SPENDING_REPORT.md` for the full schema and
 /// `DataAvailability` degradation rules.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FamilySpendingReport {
     pub member_breakdown: Vec<FamilyMemberSpending>,
     pub total_members: u32,
@@ -169,7 +169,7 @@ pub struct FamilySpendingReport {
 
 /// Per-member family spending breakdown entry.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FamilyMemberSpending {
     /// Family-wallet member address.
     pub member: Address,
@@ -184,7 +184,7 @@ pub struct FamilyMemberSpending {
 
 /// Overall financial health report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FinancialHealthReport {
     pub health_score: HealthScore,
     pub remittance_summary: RemittanceSummary,
@@ -205,7 +205,7 @@ pub struct FinancialHealthReport {
 ///
 /// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TopNBillsReport {
     pub items: Vec<Bill>,
     pub total_amount: i128,
@@ -223,7 +223,7 @@ pub struct TopNBillsReport {
 ///
 /// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TopNSavingsReport {
     pub items: Vec<SavingsGoal>,
     pub total_target: i128,
@@ -236,7 +236,7 @@ pub struct TopNSavingsReport {
 
 /// Contract addresses configuration
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ContractAddresses {
     pub remittance_split: Address,
     pub savings_goals: Address,
@@ -278,6 +278,16 @@ pub enum ReportingError {
     ViewerNotGranted = 14,
     /// A viewer cannot be granted access to the owner identity itself.
     InvalidViewer = 15,
+    /// `store_report` would exceed [`MAX_ACTIVE_REPORTS_PER_USER`] active
+    /// reports for this user. Archive old reports or overwrite an existing
+    /// period key instead.
+    TooManyActiveReports = 16,
+    /// Legacy instance-storage data has not been fully migrated yet; call
+    /// `migrate_reports_to_persistent` until it completes.
+    MigrationPending = 17,
+    /// The user's archive index already holds [`MAX_ARCHIVE_PER_USER`]
+    /// entries; run `cleanup_old_reports` for this user first.
+    ArchiveIndexFull = 18,
 }
 
 /// Explicit report data scopes that can be delegated independently.
@@ -292,7 +302,7 @@ pub enum ReportScope {
 
 /// The subject and viewer identity recorded in an ACL event.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ViewerGrant {
     pub owner: Address,
     pub viewer: Address,
@@ -302,7 +312,7 @@ pub struct ViewerGrant {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReportEvent {
     ReportGenerated,
     ReportStored,
@@ -311,11 +321,12 @@ pub enum ReportEvent {
     ArchivesCleaned,
     ViewerGranted,
     ViewerRevoked,
+    ArchiveIndexRepaired,
 }
 
 /// Archived report - compressed summary
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArchivedReport {
     pub user: Address,
     pub period_key: u64,
@@ -326,7 +337,7 @@ pub struct ArchivedReport {
 
 /// Paginated result for archived reports
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArchivedPage {
     pub items: Vec<ArchivedReport>,
     pub next_cursor: u32,
@@ -335,11 +346,79 @@ pub struct ArchivedPage {
 
 /// Storage statistics for monitoring
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StorageStats {
     pub active_reports: u32,
     pub archived_reports: u32,
     pub last_updated: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Persistent per-record storage layout
+// ---------------------------------------------------------------------------
+
+/// Maximum number of *active* (non-archived) reports a single user may hold.
+///
+/// `store_report` only requires the user's own auth, so without a cap any
+/// account could grow its own index without bound. 120 = 10 years of monthly
+/// reports. Overwriting an existing `(user, period_key)` never counts against
+/// the cap.
+pub const MAX_ACTIVE_REPORTS_PER_USER: u32 = 120;
+
+/// Maximum number of entries in a single user's archive index.
+///
+/// `archive_old_reports` stops appending once a user's index reaches this
+/// size; `cleanup_old_reports` frees room again.
+pub const MAX_ARCHIVE_PER_USER: u32 = 500;
+
+/// Upper bound (and default for `limit == 0`) on the number of records
+/// processed by one call to `archive_old_reports`, `cleanup_old_reports` or
+/// `migrate_reports_to_persistent`.
+///
+/// Operators should pick a `limit` that also fits the network's per-transaction
+/// read/write ledger-entry limits; this constant is only an absolute ceiling.
+pub const MAX_STORAGE_BATCH: u32 = 100;
+
+/// Legacy instance-storage keys (pre-migration layout). They are only read
+/// as a fallback and drained by [`ReportingContract::migrate_reports_to_persistent`].
+const LEGACY_REPORTS: Symbol = symbol_short!("REPORTS");
+const LEGACY_ARCH_RPT: Symbol = symbol_short!("ARCH_RPT");
+const LEGACY_ARCH_IDX: Symbol = symbol_short!("ARCH_IDX");
+const LEGACY_VIEW_ACL: Symbol = symbol_short!("VIEW_ACL");
+
+/// Per-record persistent storage keys.
+///
+/// Every per-user record lives under its own persistent ledger entry with its
+/// own TTL, so the cost of touching one user's data is independent of how
+/// many other users exist. Only small, contract-wide configuration
+/// (`ADMIN`, `PEND_ADM`, `ADDRS`, `STOR_STAT`) stays in instance storage.
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    /// Active report for `(user, period_key)` → [`FinancialHealthReport`].
+    Report(Address, u64),
+    /// Archived summary for `(user, period_key)` → [`ArchivedReport`].
+    Archived(Address, u64),
+    /// Per-user archive index (`Vec<u64>` of period keys, append order),
+    /// capped at [`MAX_ARCHIVE_PER_USER`].
+    ArchiveIndex(Address),
+    /// Per-user list of active reports (`Vec<ReportIndexEntry>`), capped at
+    /// [`MAX_ACTIVE_REPORTS_PER_USER`]. Needed so archiving can enumerate one
+    /// user's reports without scanning global state.
+    ReportIndex(Address),
+    /// Viewer grant `(owner, viewer, scope)` → expiry (`u64`, `0` = never).
+    ViewerGrant(Address, Address, ReportScope),
+}
+
+/// One entry of [`DataKey::ReportIndex`].
+///
+/// `generated_at` is denormalised from the report so `archive_old_reports`
+/// can select candidates without loading every report entry.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReportIndexEntry {
+    pub period_key: u64,
+    pub generated_at: u64,
 }
 
 /// Health-check result for one configured downstream reporting dependency.
@@ -367,12 +446,30 @@ pub struct DependencyStatus {
     pub error_category: Option<soroban_sdk::String>,
 }
 
+/// Mirror of the real `remittance_split::SplitConfig`.
+///
+/// Field names, order and types MUST match `SplitConfig` in
+/// `remittance_split/src/lib.rs` exactly so the value returned by
+/// `get_config` decodes without a `ConversionError`.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SplitConfig {
+    pub owner: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
+    pub timestamp: u64,
+    pub initialized: bool,
+    pub usdc_contract: Address,
+}
+
 // Client traits for cross-contract calls
 
 #[contractclient(name = "RemittanceSplitClient")]
 pub trait RemittanceSplitTrait {
-    fn get_split(env: &Env) -> Vec<u32>;
-    fn calculate_split(env: Env, total_amount: i128) -> Vec<i128>;
+    fn get_split(env: &Env, orchestrator: Address, epoch: u64) -> Vec<u32>;
+    fn get_config(env: Env) -> Option<SplitConfig>;
 }
 
 #[contractclient(name = "SavingsGoalsClient")]
@@ -405,7 +502,7 @@ pub trait FamilyWalletTrait {
 
 // Data structures from other contracts (needed for client traits)
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SavingsGoal {
     pub id: u32,
     pub owner: Address,
@@ -419,7 +516,7 @@ pub struct SavingsGoal {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GoalPage {
     pub items: Vec<SavingsGoal>,
     pub next_cursor: u32,
@@ -427,7 +524,7 @@ pub struct GoalPage {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Bill {
     pub id: u32,
     pub owner: Address,
@@ -446,7 +543,7 @@ pub struct Bill {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BillPage {
     pub items: Vec<Bill>,
     pub next_cursor: u32,
@@ -720,15 +817,26 @@ impl ReportingContract {
     // Delegated report access
     // ---------------------------------------------------------------------
 
-    /// Return the storage map used for explicit subject-to-viewer grants.
+    /// Look up the raw expiry for an explicit subject-to-viewer grant.
     ///
     /// The owner is part of the key, so a viewer grant for one subject can
-    /// never authorize access to another subject's records.
-    fn viewer_grants(env: &Env) -> Map<(Address, Address, ReportScope), u64> {
+    /// never authorize access to another subject's records. Reads the
+    /// per-grant persistent entry first and falls back to the legacy
+    /// `VIEW_ACL` instance map until migration has drained it.
+    fn viewer_grant_expiry(
+        env: &Env,
+        owner: &Address,
+        viewer: &Address,
+        scope: ReportScope,
+    ) -> Option<u64> {
+        let key = DataKey::ViewerGrant(owner.clone(), viewer.clone(), scope);
+        if let Some(expires_at) = Self::read_persistent::<u64>(env, &key) {
+            return Some(expires_at);
+        }
         env.storage()
             .instance()
-            .get(&symbol_short!("VIEW_ACL"))
-            .unwrap_or_else(|| Map::new(env))
+            .get::<_, Map<(Address, Address, ReportScope), u64>>(&LEGACY_VIEW_ACL)
+            .and_then(|grants| grants.get((owner.clone(), viewer.clone(), scope)))
     }
 
     fn viewer_is_authorized(
@@ -740,8 +848,7 @@ impl ReportingContract {
         if caller == owner {
             return true;
         }
-        let grants = Self::viewer_grants(env);
-        match grants.get((owner.clone(), caller.clone(), scope)) {
+        match Self::viewer_grant_expiry(env, owner, caller, scope) {
             Some(expires_at) => expires_at == 0 || env.ledger().timestamp() < expires_at,
             None => false,
         }
@@ -787,11 +894,11 @@ impl ReportingContract {
             return Err(ReportingError::InvalidGrantExpiry);
         }
 
-        let mut grants = Self::viewer_grants(&env);
-        grants.set((owner.clone(), viewer.clone(), scope), expires_at);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("VIEW_ACL"), &grants);
+        Self::write_persistent(
+            &env,
+            &DataKey::ViewerGrant(owner.clone(), viewer.clone(), scope),
+            &expires_at,
+        );
         Self::extend_instance_ttl(&env);
         env.events().publish(
             (symbol_short!("report"), ReportEvent::ViewerGranted),
@@ -818,11 +925,23 @@ impl ReportingContract {
             .instance()
             .get(&symbol_short!("ADMIN"))
             .ok_or(ReportingError::NotInitialized)?;
-        let mut grants = Self::viewer_grants(&env);
-        grants.remove((owner.clone(), viewer.clone(), scope));
         env.storage()
+            .persistent()
+            .remove(&DataKey::ViewerGrant(owner.clone(), viewer.clone(), scope));
+        // Security: until migration completes, reads fall back to the legacy
+        // map. Remove the legacy entry too so a revoked grant cannot be
+        // resurrected by the fallback path.
+        if let Some(mut legacy) = env
+            .storage()
             .instance()
-            .set(&symbol_short!("VIEW_ACL"), &grants);
+            .get::<_, Map<(Address, Address, ReportScope), u64>>(&LEGACY_VIEW_ACL)
+        {
+            let legacy_key = (owner.clone(), viewer.clone(), scope);
+            if legacy.contains_key(legacy_key.clone()) {
+                legacy.remove(legacy_key);
+                Self::store_legacy_map(&env, &LEGACY_VIEW_ACL, &legacy);
+            }
+        }
         Self::extend_instance_ttl(&env);
         env.events().publish(
             (symbol_short!("report"), ReportEvent::ViewerRevoked),
@@ -848,8 +967,7 @@ impl ReportingContract {
         if caller != owner && caller != viewer {
             return Err(ReportingError::Unauthorized);
         }
-        Ok(Self::viewer_grants(&env)
-            .get((owner, viewer, scope))
+        Ok(Self::viewer_grant_expiry(&env, &owner, &viewer, scope)
             .filter(|expiry| *expiry == 0 || env.ledger().timestamp() < *expiry))
     }
 
@@ -1059,7 +1177,7 @@ impl ReportingContract {
 
         // Check remittance_split
         let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
-        let split_ok = matches!(split_client.try_get_split(), Ok(Ok(_)));
+        let split_ok = matches!(split_client.try_get_config(), Ok(Ok(_)));
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "remittance_split"),
             ok: split_ok,
@@ -1181,8 +1299,15 @@ impl ReportingContract {
         let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);
         let mut availability = DataAvailability::Complete;
 
-        let split_percentages = match split_client.try_get_split() {
-            Ok(Ok(res)) => res,
+        let split_percentages = match split_client.try_get_config() {
+            Ok(Ok(Some(cfg))) => soroban_sdk::vec![
+                env,
+                cfg.spending_percent,
+                cfg.savings_percent,
+                cfg.bills_percent,
+                cfg.insurance_percent
+            ],
+            // `None` (split_not_configured) or any call/decode failure.
             _ => {
                 availability = DataAvailability::Partial;
                 Vec::new(env)
@@ -1203,7 +1328,10 @@ impl ReportingContract {
                 }
 
                 // Percentages are basis points; divide by 10_000 (100.00%).
-                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 10_000;
+                let amount = total_amount
+                    .checked_mul(p as i128)
+                    .ok_or(ReportingError::Overflow)?
+                    / 10_000;
                 split_amounts.push_back(amount);
             }
 
@@ -2069,38 +2197,69 @@ impl ReportingContract {
     }
 
     /// Store a financial health report for a user (must authorize).
+    ///
+    /// The report is written to its own persistent entry
+    /// `DataKey::Report(user, period_key)` and `period_key` is recorded in the
+    /// user's `DataKey::ReportIndex`. Cost is independent of how many other
+    /// users have stored reports.
+    ///
+    /// Overwriting an existing `(user, period_key)` is always allowed. Adding a
+    /// new period key fails once the user already holds
+    /// [`MAX_ACTIVE_REPORTS_PER_USER`] active reports.
+    ///
+    /// # Errors
+    /// * `TooManyActiveReports` - the per-user active-report cap is reached.
     pub fn store_report(
         env: Env,
         user: Address,
         report: FinancialHealthReport,
         period_key: u64,
-    ) -> bool {
+    ) -> Result<bool, ReportingError> {
         user.require_auth();
 
         Self::extend_instance_ttl(&env);
 
-        let mut reports: Map<(Address, u64), FinancialHealthReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REPORTS"))
-            .unwrap_or_else(|| Map::new(&env));
+        let report_key = DataKey::Report(user.clone(), period_key);
+        let mut index = Self::load_report_index(&env, &user);
+        let entry = ReportIndexEntry {
+            period_key,
+            generated_at: report.generated_at,
+        };
 
-        reports.set((user.clone(), period_key), report);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("REPORTS"), &reports);
+        let mut is_new_record = false;
+        if env.storage().persistent().has(&report_key) {
+            // Overwrite: refresh the denormalised timestamp in the index.
+            match Self::index_position(&index, period_key)? {
+                Some(pos) => index.set(pos, entry),
+                None => index.push_back(entry),
+            }
+        } else {
+            if index.len() >= MAX_ACTIVE_REPORTS_PER_USER {
+                return Err(ReportingError::TooManyActiveReports);
+            }
+            index.push_back(entry);
+            // A not-yet-migrated legacy entry for the same key is already
+            // counted in `STOR_STAT`; replacing it must not double count.
+            is_new_record = !Self::legacy_report_exists(&env, &user, period_key);
+        }
+
+        Self::write_persistent(&env, &report_key, &report);
+        Self::save_report_index(&env, &user, &index);
 
         env.events().publish(
             (symbol_short!("report"), ReportEvent::ReportStored),
             (user, period_key),
         );
 
-        Self::update_storage_stats(&env);
+        Self::adjust_storage_stats(&env, u32::from(is_new_record), 0, 0, 0);
 
-        true
+        Ok(true)
     }
 
     /// Retrieve a previously stored report.
+    ///
+    /// Reads `DataKey::Report(user, period_key)` and falls back to the legacy
+    /// instance map until `migrate_reports_to_persistent` has completed.
     pub fn get_stored_report(
         env: Env,
         _caller: Address,
@@ -2108,18 +2267,12 @@ impl ReportingContract {
         period_key: u64,
     ) -> Option<FinancialHealthReport> {
         user.require_auth();
-        let reports: Map<(Address, u64), FinancialHealthReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REPORTS"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        reports.get((user, period_key))
+        Self::load_report(&env, &user, period_key)
     }
 
     /// Delegated equivalent of [`get_stored_report`]. The viewer must hold an
     /// active `Stored` grant for this exact owner; the owner may always read
-    /// their own report. Unauthorized calls fail before the storage map is
+    /// their own report. Unauthorized calls fail before storage is
     /// inspected, so report existence is not distinguishable.
     pub fn get_stored_report_for(
         env: Env,
@@ -2128,12 +2281,7 @@ impl ReportingContract {
         period_key: u64,
     ) -> Result<Option<FinancialHealthReport>, ReportingError> {
         Self::require_viewer(&env, &viewer, &owner, ReportScope::Stored)?;
-        let reports: Map<(Address, u64), FinancialHealthReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REPORTS"))
-            .unwrap_or_else(|| Map::new(&env));
-        Ok(reports.get((owner, period_key)))
+        Ok(Self::load_report(&env, &owner, period_key))
     }
 
     /// Get configured contract addresses.
@@ -2151,6 +2299,11 @@ impl ReportingContract {
     /// Moves report data from the primary `REPORTS` storage to the `ARCH_RPT`
     /// storage, potentially reducing gas costs for active users.
     ///
+    /// Maintains set semantics on `ARCH_IDX`: each `period_key` appears at most
+    /// once per user. If a report for a period was previously archived and
+    /// re-stored, re-archiving overwrites the archive record in `ARCH_RPT` and
+    /// deduplicates insertion into `ARCH_IDX`, leaving the index unchanged.
+    ///
     /// # Arguments
     /// * `caller` - Address of the administrator (must authorize)
     /// * `before_timestamp` - Archive reports generated before this ledger timestamp
@@ -2161,10 +2314,31 @@ impl ReportingContract {
     /// # Errors
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the admin
+    /// Archive old reports before the specified timestamp for a specific user (admin only).
+    ///
+    /// Moves report data from `DataKey::Report` to `DataKey::Archived`, and
+    /// moves period keys from `ReportIndex` to `ArchiveIndex`. Cost is strictly
+    /// bounded by `limit`, not by the global data size.
+    ///
+    /// # Arguments
+    /// * `caller` - Address of the administrator (must authorize)
+    /// * `user` - Target user whose reports are being archived
+    /// * `before_timestamp` - Archive reports generated before this ledger timestamp
+    /// * `limit` - Maximum number of reports to archive in this call (0 defaults to MAX_STORAGE_BATCH)
+    ///
+    /// # Returns
+    /// `Ok(u32)` containing the number of reports archived
+    ///
+    /// # Errors
+    /// * `NotInitialized` - If contract has not been initialized
+    /// * `Unauthorized` - If caller is not the admin
+    /// * `ArchiveIndexFull` - If user's archive index would exceed MAX_ARCHIVE_PER_USER
     pub fn archive_old_reports(
         env: Env,
         caller: Address,
+        user: Address,
         before_timestamp: u64,
+        limit: u32,
     ) -> Result<u32, ReportingError> {
         caller.require_auth();
 
@@ -2180,70 +2354,60 @@ impl ReportingContract {
 
         Self::extend_instance_ttl(&env);
 
-        let mut reports: Map<(Address, u64), FinancialHealthReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REPORTS"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut archived: Map<(Address, u64), ArchivedReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_RPT"))
-            .unwrap_or_else(|| Map::new(&env));
+        let batch_limit = if limit == 0 {
+            MAX_STORAGE_BATCH
+        } else {
+            limit.min(MAX_STORAGE_BATCH)
+        };
 
         let current_time = env.ledger().timestamp();
+        let mut report_idx = Self::load_report_index(&env, &user);
+        let mut arch_idx = Self::load_archive_index(&env, &user);
+
         let mut archived_count = 0u32;
-        let mut to_remove: Vec<(Address, u64)> = Vec::new(&env);
+        let mut new_report_idx = Vec::new(&env);
 
-        let mut arch_idx: Map<Address, Vec<u64>> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_IDX"))
-            .unwrap_or_else(|| Map::new(&env));
+        for entry in report_idx.iter() {
+            if entry.generated_at < before_timestamp && archived_count < batch_limit {
+                if arch_idx.len() >= MAX_ARCHIVE_PER_USER {
+                    return Err(ReportingError::ArchiveIndexFull);
+                }
 
-        for ((user, period_key), report) in reports.iter() {
-            if report.generated_at < before_timestamp {
-                let archived_report = ArchivedReport {
-                    user: user.clone(),
-                    period_key,
-                    health_score: report.health_score.score,
-                    generated_at: report.generated_at,
-                    archived_at: current_time,
-                };
-                archived.set((user.clone(), period_key), archived_report);
-                to_remove.push_back((user.clone(), period_key));
-                archived_count += 1;
+                if let Some(report) = Self::load_report(&env, &user, entry.period_key) {
+                    let archived_report = ArchivedReport {
+                        user: user.clone(),
+                        period_key: entry.period_key,
+                        health_score: report.health_score.score,
+                        generated_at: report.generated_at,
+                        archived_at: current_time,
+                    };
 
-                let mut user_idx = arch_idx.get(user.clone()).unwrap_or_else(|| Vec::new(&env));
-                user_idx.push_back(period_key);
-                arch_idx.set(user, user_idx);
+                    let arch_key = DataKey::Archived(user.clone(), entry.period_key);
+                    Self::write_archive(&env, &arch_key, &archived_report);
+
+                    let rep_key = DataKey::Report(user.clone(), entry.period_key);
+                    env.storage().persistent().remove(&rep_key);
+
+                    arch_idx.push_back(entry.period_key);
+                    archived_count += 1;
+                } else {
+                    new_report_idx.push_back(entry);
+                }
+            } else {
+                new_report_idx.push_back(entry);
             }
         }
 
-        for i in 0..to_remove.len() {
-            if let Some(key) = to_remove.get(i) {
-                reports.remove(key);
-            }
+        if archived_count > 0 {
+            Self::save_report_index(&env, &user, &new_report_idx);
+            Self::save_archive_index(&env, &user, &arch_idx);
+            Self::adjust_storage_stats(&env, 0, archived_count, archived_count, 0);
+
+            env.events().publish(
+                (symbol_short!("report"), ReportEvent::ReportsArchived),
+                (archived_count, caller),
+            );
         }
-
-        env.storage()
-            .instance()
-            .set(&symbol_short!("REPORTS"), &reports);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_RPT"), &archived);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_IDX"), &arch_idx);
-
-        Self::extend_archive_ttl(&env);
-        Self::update_storage_stats(&env);
-
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ReportsArchived),
-            (archived_count, caller),
-        );
 
         Ok(archived_count)
     }
@@ -2254,85 +2418,18 @@ impl ReportingContract {
     /// future contract release after the migration window. Downstream callers should
     /// migrate to [`ReportingContract::get_archived_reports_page`] and walk the archive
     /// by advancing the returned `next_cursor` until it reaches `0`.
-    ///
-    /// This entrypoint is **deprecated** as of v0.2.0 and is preserved only for
-    /// backwards compatibility. It is now internally bounded to the first
-    /// `DEFAULT_PAGE_LIMIT` (20) entries of the user's archive — it no longer
-    /// walks the entire `ARCH_IDX(user)` list. For users with long archive
-    /// histories (archives are kept alive for ~150 days) this bound prevents
-    /// the call from exceeding the host return-size/gas budget and reverting.
-    ///
-    /// Callers **must migrate** to [`ReportingContract::get_archived_reports_page`],
-    /// which returns an [`ArchivedPage`] with the canonical cursor terminator
-    /// convention (`next_cursor == 0` means "no more pages") and an explicit
-    /// pager count so callers can walk the full archive progressively.
-    ///
-    /// Removal of this entrypoint is tracked separately — see
-    /// [`CHANGELOG_CONTRACTS.md`] for the migration note.
-    ///
-    /// # Arguments
-    /// * `user` - Address of the user
-    ///
-    /// # Returns
-    /// At most `DEFAULT_PAGE_LIMIT` (20) [`ArchivedReport`] entries (the first
-    /// page only). To retrieve the rest of the archive, call
-    /// `get_archived_reports_page(user, cursor=20, limit=DEFAULT_PAGE_LIMIT)`
-    /// and continue paginating until `next_cursor == 0`.
     #[deprecated(
         since = "0.2.0",
         note = "Returns at most DEFAULT_PAGE_LIMIT entries; migrate to get_archived_reports_page to walk the full archive."
     )]
     #[allow(deprecated)]
     pub fn get_archived_reports(env: Env, user: Address) -> Vec<ArchivedReport> {
-        // Auth is enforced by the delegate get_archived_reports_page call below.
-        // Duplicate require_auth here would cause ExistingValue in Soroban's auth system.
         let ArchivedPage { items, .. } =
             Self::get_archived_reports_page(env, user, 0u32, DEFAULT_PAGE_LIMIT);
         items
     }
 
     /// Get a paginated list of archived reports for a user.
-    ///
-    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
-    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
-    ///
-    /// This is the supported entrypoint for reading the archive — see the
-    /// deprecation note on [`ReportingContract::get_archived_reports`].
-    ///
-    /// # Pagination contract
-    ///
-    /// The cursor follows the standard Remitwise terminator convention:
-    ///
-    /// - `items`     — Up to `limit` [`ArchivedReport`] entries starting at `cursor`.
-    /// - `next_cursor` — `0` when there are **no more pages**. Otherwise, the
-    ///   index of the first item in the next page.
-    /// - `count`     — Total number of archived reports for `user`. Unaffected
-    ///   by `cursor` or `limit`.
-    ///
-    /// # Termination guarantees
-    ///
-    /// The pager **always terminates**:
-    /// - In-range `cursor`: returns up to `limit` items and either
-    ///   `next_cursor == end_index` (more pages) or `next_cursor == 0` (last
-    ///   page, exactly when `cursor + limit >= count`).
-    /// - Out-of-range `cursor` (`cursor >= count`): returns an empty `items`
-    ///   vector with `next_cursor == 0` (canonical terminator) — never panics.
-    /// - Empty archive (`count == 0`): empty `items`, `next_cursor == 0`.
-    ///
-    /// # Limit normalization
-    ///
-    /// `limit` is normalized via `remitwise-common::clamp_limit`:
-    /// - `0` maps to [`DEFAULT_PAGE_LIMIT`] (20).
-    /// - Values above `MAX_PAGE_LIMIT` (50) clamp to `MAX_PAGE_LIMIT`.
-    /// This matches every other paginated read in the Remitwise suite.
-    ///
-    /// # Arguments
-    /// * `user`   - Address of the user
-    /// * `cursor` - Starting index in the user's archive list
-    /// * `limit`  - Maximum number of reports to return (see normalization above)
-    ///
-    /// # Returns
-    /// [`ArchivedPage`] with `items`, `next_cursor`, and `count`.
     pub fn get_archived_reports_page(
         env: Env,
         user: Address,
@@ -2341,25 +2438,9 @@ impl ReportingContract {
     ) -> ArchivedPage {
         user.require_auth();
 
-        let arch_idx: Map<Address, Vec<u64>> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_IDX"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let user_idx = arch_idx.get(user.clone()).unwrap_or_else(|| Vec::new(&env));
+        let user_idx = Self::load_archive_index(&env, &user);
         let total_count = user_idx.len();
 
-        let archived: Map<(Address, u64), ArchivedReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_RPT"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        // Out-of-range cursor: canonical termination (empty page, next_cursor = 0).
-        // This is a strict improvement over the prior behaviour that echoed
-        // `cursor` back as `next_cursor`, which forced every caller to make a
-        // second call to detect the end of the archive.
         let mut items = Vec::new(&env);
         if cursor >= total_count {
             return ArchivedPage {
@@ -2373,7 +2454,7 @@ impl ReportingContract {
         let end = cursor.saturating_add(limit).min(total_count);
         for i in cursor..end {
             if let Some(period_key) = user_idx.get(i) {
-                if let Some(report) = archived.get((user.clone(), period_key)) {
+                if let Some(report) = Self::load_archived_report(&env, &user, period_key) {
                     items.push_back(report);
                 }
             }
@@ -2387,8 +2468,7 @@ impl ReportingContract {
     }
 
     /// Delegated, paginated archive read with the same cursor semantics as the
-    /// owner-only endpoint. The scope is `Archived`, not `Stored`, so granting
-    /// archive access never exposes full stored reports.
+    /// owner-only endpoint.
     pub fn get_archived_reports_page_for(
         env: Env,
         viewer: Address,
@@ -2397,20 +2477,9 @@ impl ReportingContract {
         limit: u32,
     ) -> Result<ArchivedPage, ReportingError> {
         Self::require_viewer(&env, &viewer, &owner, ReportScope::Archived)?;
-        let arch_idx: Map<Address, Vec<u64>> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_IDX"))
-            .unwrap_or_else(|| Map::new(&env));
-        let user_idx = arch_idx
-            .get(owner.clone())
-            .unwrap_or_else(|| Vec::new(&env));
+        let user_idx = Self::load_archive_index(&env, &owner);
         let total_count = user_idx.len();
-        let archived: Map<(Address, u64), ArchivedReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_RPT"))
-            .unwrap_or_else(|| Map::new(&env));
+
         let mut items = Vec::new(&env);
         if cursor >= total_count {
             return Ok(ArchivedPage {
@@ -2423,7 +2492,7 @@ impl ReportingContract {
         let end = cursor.saturating_add(normalized_limit).min(total_count);
         for i in cursor..end {
             if let Some(period_key) = user_idx.get(i) {
-                if let Some(report) = archived.get((owner.clone(), period_key)) {
+                if let Some(report) = Self::load_archived_report(&env, &owner, period_key) {
                     items.push_back(report);
                 }
             }
@@ -2435,11 +2504,20 @@ impl ReportingContract {
         })
     }
 
-    /// Permanently delete old archives before specified timestamp (admin only).
+    /// Permanently delete old archives before specified timestamp for a user (admin only).
+    ///
+    /// Cost is bounded by `limit`, not by the global data size.
+    ///
+    /// Maintains set semantics on `ARCH_IDX`: removes all occurrences of the
+    /// deleted `period_key` from the user's archive index, healing any legacy
+    /// duplicate entries. When a user's index becomes empty, the user key is
+    /// removed from `ARCH_IDX`.
     ///
     /// # Arguments
     /// * `caller` - Address of the administrator (must authorize)
+    /// * `user` - Target user whose archives are being cleaned up
     /// * `before_timestamp` - Delete archives created before this ledger timestamp
+    /// * `limit` - Maximum number of archives to delete in this call (0 defaults to MAX_STORAGE_BATCH)
     ///
     /// # Returns
     /// `Ok(u32)` containing the number of archives deleted
@@ -2450,7 +2528,9 @@ impl ReportingContract {
     pub fn cleanup_old_reports(
         env: Env,
         caller: Address,
+        user: Address,
         before_timestamp: u64,
+        limit: u32,
     ) -> Result<u32, ReportingError> {
         caller.require_auth();
 
@@ -2466,74 +2546,229 @@ impl ReportingContract {
 
         Self::extend_instance_ttl(&env);
 
-        let mut archived: Map<(Address, u64), ArchivedReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_RPT"))
-            .unwrap_or_else(|| Map::new(&env));
+        let batch_limit = if limit == 0 {
+            MAX_STORAGE_BATCH
+        } else {
+            limit.min(MAX_STORAGE_BATCH)
+        };
 
-        let mut arch_idx: Map<Address, Vec<u64>> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_IDX"))
-            .unwrap_or_else(|| Map::new(&env));
-
+        let arch_idx = Self::load_archive_index(&env, &user);
+        let mut new_arch_idx = Vec::new(&env);
         let mut deleted_count = 0u32;
-        let mut to_remove: Vec<(Address, u64)> = Vec::new(&env);
 
-        for ((user, period_key), report) in archived.iter() {
-            if report.archived_at < before_timestamp {
-                to_remove.push_back((user.clone(), period_key));
-                deleted_count += 1;
-
-                // Update index
-                if let Some(mut user_idx) = arch_idx.get(user.clone()) {
-                    if let Some(idx) = user_idx.iter().position(|k| k == period_key) {
-                        let idx_u32 =
-                            u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
-                        user_idx.remove(idx_u32);
-                        if user_idx.is_empty() {
-                            arch_idx.remove(user);
-                        } else {
-                            arch_idx.set(user, user_idx);
-                        }
+        for period_key in arch_idx.iter() {
+            let mut should_delete = false;
+            if deleted_count < batch_limit {
+                if let Some(report) = Self::load_archived_report(&env, &user, period_key) {
+                    if report.archived_at < before_timestamp {
+                        should_delete = true;
                     }
                 }
             }
-        }
 
-        for i in 0..to_remove.len() {
-            if let Some(key) = to_remove.get(i) {
-                archived.remove(key);
+            if should_delete {
+                let arch_key = DataKey::Archived(user.clone(), period_key);
+                env.storage().persistent().remove(&arch_key);
+                deleted_count += 1;
+            } else {
+                new_arch_idx.push_back(period_key);
             }
         }
 
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_RPT"), &archived);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_IDX"), &arch_idx);
+        if deleted_count > 0 {
+            Self::save_archive_index(&env, &user, &new_arch_idx);
+            Self::adjust_storage_stats(&env, 0, 0, 0, deleted_count);
 
-        Self::update_storage_stats(&env);
-
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ArchivesCleaned),
-            (deleted_count, caller),
-        );
+            env.events().publish(
+                (symbol_short!("report"), ReportEvent::ArchivesCleaned),
+                (deleted_count, caller),
+            );
+        }
 
         Ok(deleted_count)
     }
 
+    /// One-shot, admin-only, paginated migration entrypoint.
+    /// Moves existing instance data (REPORTS, ARCH_RPT, ARCH_IDX, VIEW_ACL) to persistent storage
+    /// and deletes the instance keys when done.
+    pub fn migrate_reports_to_persistent(
+        env: Env,
+        caller: Address,
+        limit: u32,
+    ) -> Result<u32, ReportingError> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .ok_or(ReportingError::NotInitialized)?;
+
+        if caller != admin {
+            return Err(ReportingError::Unauthorized);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let mut remaining_limit = if limit == 0 {
+            MAX_STORAGE_BATCH
+        } else {
+            limit.min(MAX_STORAGE_BATCH)
+        };
+        let mut total_migrated = 0u32;
+
+        // 1. Migrate REPORTS
+        if let Some(mut reports) = env
+            .storage()
+            .instance()
+            .get::<_, Map<(Address, u64), FinancialHealthReport>>(&LEGACY_REPORTS)
+        {
+            let mut keys_to_remove = Vec::new(&env);
+            for ((user, period_key), report) in reports.iter() {
+                if remaining_limit == 0 {
+                    break;
+                }
+                let rep_key = DataKey::Report(user.clone(), period_key);
+                Self::write_persistent(&env, &rep_key, &report);
+
+                // Add to user's ReportIndex if not already present
+                let mut idx = Self::load_report_index(&env, &user);
+                let already_indexed = Self::index_position(&idx, period_key)?.is_some();
+                if !already_indexed {
+                    idx.push_back(ReportIndexEntry {
+                        period_key,
+                        generated_at: report.generated_at,
+                    });
+                    Self::save_report_index(&env, &user, &idx);
+                }
+
+                keys_to_remove.push_back((user, period_key));
+                remaining_limit -= 1;
+                total_migrated += 1;
+            }
+
+            for k in keys_to_remove.iter() {
+                reports.remove(k);
+            }
+
+            if reports.is_empty() {
+                env.storage().instance().remove(&LEGACY_REPORTS);
+            } else {
+                Self::store_legacy_map(&env, &LEGACY_REPORTS, &reports);
+            }
+        }
+
+        // 2. Migrate ARCH_RPT
+        if remaining_limit > 0 {
+            if let Some(mut archived) = env
+                .storage()
+                .instance()
+                .get::<_, Map<(Address, u64), ArchivedReport>>(&LEGACY_ARCH_RPT)
+            {
+                let mut keys_to_remove = Vec::new(&env);
+                for ((user, period_key), arch_report) in archived.iter() {
+                    if remaining_limit == 0 {
+                        break;
+                    }
+                    let arch_key = DataKey::Archived(user.clone(), period_key);
+                    Self::write_archive(&env, &arch_key, &arch_report);
+
+                    keys_to_remove.push_back((user, period_key));
+                    remaining_limit -= 1;
+                    total_migrated += 1;
+                }
+
+                for k in keys_to_remove.iter() {
+                    archived.remove(k);
+                }
+
+                if archived.is_empty() {
+                    env.storage().instance().remove(&LEGACY_ARCH_RPT);
+                } else {
+                    Self::store_legacy_map(&env, &LEGACY_ARCH_RPT, &archived);
+                }
+            }
+        }
+
+        // 3. Migrate ARCH_IDX
+        if remaining_limit > 0 {
+            if let Some(mut arch_idx_map) = env
+                .storage()
+                .instance()
+                .get::<_, Map<Address, Vec<u64>>>(&LEGACY_ARCH_IDX)
+            {
+                let mut users_to_remove = Vec::new(&env);
+                for (user, legacy_idx) in arch_idx_map.iter() {
+                    if remaining_limit == 0 {
+                        break;
+                    }
+                    let mut persistent_idx = Self::load_archive_index(&env, &user);
+                    for pk in legacy_idx.iter() {
+                        let mut exists = false;
+                        for existing_pk in persistent_idx.iter() {
+                            if existing_pk == pk {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if !exists {
+                            persistent_idx.push_back(pk);
+                        }
+                    }
+                    Self::save_archive_index(&env, &user, &persistent_idx);
+                    users_to_remove.push_back(user);
+                    remaining_limit -= 1;
+                    total_migrated += 1;
+                }
+
+                for u in users_to_remove.iter() {
+                    arch_idx_map.remove(u);
+                }
+
+                if arch_idx_map.is_empty() {
+                    env.storage().instance().remove(&LEGACY_ARCH_IDX);
+                } else {
+                    Self::store_legacy_map(&env, &LEGACY_ARCH_IDX, &arch_idx_map);
+                }
+            }
+        }
+
+        // 4. Migrate VIEW_ACL
+        if remaining_limit > 0 {
+            if let Some(mut acl_map) = env
+                .storage()
+                .instance()
+                .get::<_, Map<(Address, Address, ReportScope), u64>>(&LEGACY_VIEW_ACL)
+            {
+                let mut grants_to_remove = Vec::new(&env);
+                for ((owner, viewer, scope), expires_at) in acl_map.iter() {
+                    if remaining_limit == 0 {
+                        break;
+                    }
+                    let grant_key = DataKey::ViewerGrant(owner.clone(), viewer.clone(), scope);
+                    Self::write_persistent(&env, &grant_key, &expires_at);
+
+                    grants_to_remove.push_back((owner, viewer, scope));
+                    remaining_limit -= 1;
+                    total_migrated += 1;
+                }
+
+                for g in grants_to_remove.iter() {
+                    acl_map.remove(g);
+                }
+
+                if acl_map.is_empty() {
+                    env.storage().instance().remove(&LEGACY_VIEW_ACL);
+                } else {
+                    Self::store_legacy_map(&env, &LEGACY_VIEW_ACL, &acl_map);
+                }
+            }
+        }
+
+        Ok(total_migrated)
+    }
+
     /// Returns aggregate counts of active and archived reports for observability.
-    ///
-    /// This is intentionally callable without authentication: it exposes only
-    /// non-sensitive counters (not report contents or user-identifying detail).
-    /// Callers must not treat these values as authorization signals.
-    ///
-    /// # Returns
-    /// [`StorageStats`] with `active_reports`, `archived_reports`, and `last_updated`
-    /// (ledger timestamp when stats were last recomputed).
     pub fn get_storage_stats(env: Env) -> StorageStats {
         env.storage()
             .instance()
@@ -2558,36 +2793,164 @@ impl ReportingContract {
             .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
     }
 
-    /// Update storage statistics
-    fn update_storage_stats(env: &Env) {
-        let reports: Map<(Address, u64), FinancialHealthReport> = env
+    // -----------------------------------------------------------------------
+    // Persistent Storage Helper Methods
+    // -----------------------------------------------------------------------
+
+    fn read_persistent<T: soroban_sdk::TryFromVal<Env, Val>>(env: &Env, key: &DataKey) -> Option<T> {
+        if env.storage().persistent().has(key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+            env.storage().persistent().get(key)
+        } else {
+            None
+        }
+    }
+
+    fn write_persistent<T: soroban_sdk::IntoVal<Env, Val>>(env: &Env, key: &DataKey, val: &T) {
+        env.storage().persistent().set(key, val);
+        env.storage()
+            .persistent()
+            .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    }
+
+    fn write_archive<T: soroban_sdk::IntoVal<Env, Val>>(env: &Env, key: &DataKey, val: &T) {
+        env.storage().persistent().set(key, val);
+        env.storage()
+            .persistent()
+            .extend_ttl(key, ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+    }
+
+    fn load_report(env: &Env, user: &Address, period_key: u64) -> Option<FinancialHealthReport> {
+        let key = DataKey::Report(user.clone(), period_key);
+        if let Some(report) = Self::read_persistent::<FinancialHealthReport>(env, &key) {
+            return Some(report);
+        }
+        // Fallback to legacy instance REPORTS map
+        env.storage()
+            .instance()
+            .get::<_, Map<(Address, u64), FinancialHealthReport>>(&LEGACY_REPORTS)
+            .and_then(|reports| reports.get((user.clone(), period_key)))
+    }
+
+    fn legacy_report_exists(env: &Env, user: &Address, period_key: u64) -> bool {
+        env.storage()
+            .instance()
+            .get::<_, Map<(Address, u64), FinancialHealthReport>>(&LEGACY_REPORTS)
+            .map(|reports| reports.contains_key((user.clone(), period_key)))
+            .unwrap_or(false)
+    }
+
+    fn load_archived_report(env: &Env, user: &Address, period_key: u64) -> Option<ArchivedReport> {
+        let key = DataKey::Archived(user.clone(), period_key);
+        if env.storage().persistent().has(&key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+            return env.storage().persistent().get(&key);
+        }
+        // Fallback to legacy instance ARCH_RPT map
+        env.storage()
+            .instance()
+            .get::<_, Map<(Address, u64), ArchivedReport>>(&LEGACY_ARCH_RPT)
+            .and_then(|archived| archived.get((user.clone(), period_key)))
+    }
+
+    fn load_report_index(env: &Env, user: &Address) -> Vec<ReportIndexEntry> {
+        let key = DataKey::ReportIndex(user.clone());
+        if let Some(idx) = Self::read_persistent::<Vec<ReportIndexEntry>>(env, &key) {
+            return idx;
+        }
+        // Fallback: build from legacy REPORTS if present for this user
+        let mut idx = Vec::new(env);
+        if let Some(reports) = env
             .storage()
             .instance()
-            .get(&symbol_short!("REPORTS"))
-            .unwrap_or_else(|| Map::new(env));
+            .get::<_, Map<(Address, u64), FinancialHealthReport>>(&LEGACY_REPORTS)
+        {
+            for ((u, period_key), report) in reports.iter() {
+                if u == *user {
+                    idx.push_back(ReportIndexEntry {
+                        period_key,
+                        generated_at: report.generated_at,
+                    });
+                }
+            }
+        }
+        idx
+    }
 
-        let archived: Map<(Address, u64), ArchivedReport> = env
+    fn save_report_index(env: &Env, user: &Address, index: &Vec<ReportIndexEntry>) {
+        let key = DataKey::ReportIndex(user.clone());
+        Self::write_persistent(env, &key, index);
+    }
+
+    fn load_archive_index(env: &Env, user: &Address) -> Vec<u64> {
+        let key = DataKey::ArchiveIndex(user.clone());
+        if let Some(idx) = Self::read_persistent::<Vec<u64>>(env, &key) {
+            return idx;
+        }
+        // Fallback: read from legacy ARCH_IDX
+        if let Some(arch_idx) = env
             .storage()
             .instance()
-            .get(&symbol_short!("ARCH_RPT"))
-            .unwrap_or_else(|| Map::new(env));
+            .get::<_, Map<Address, Vec<u64>>>(&LEGACY_ARCH_IDX)
+        {
+            if let Some(user_idx) = arch_idx.get(user.clone()) {
+                return user_idx;
+            }
+        }
+        Vec::new(env)
+    }
 
-        // `Map::iter()` deserializes every key/value pair off the host; doing
-        // that just to count entries is wasted work on every write path that
-        // calls this function. `Map::len()` reports the entry count directly
-        // without touching the values at all.
-        let active_count = reports.len();
-        let archived_count = archived.len();
+    fn save_archive_index(env: &Env, user: &Address, index: &Vec<u64>) {
+        let key = DataKey::ArchiveIndex(user.clone());
+        Self::write_persistent(env, &key, index);
+    }
 
-        let stats = StorageStats {
-            active_reports: active_count,
-            archived_reports: archived_count,
-            last_updated: env.ledger().timestamp(),
-        };
+    fn index_position(
+        index: &Vec<ReportIndexEntry>,
+        period_key: u64,
+    ) -> Result<Option<u32>, ReportingError> {
+        for i in 0..index.len() {
+            if let Some(entry) = index.get(i) {
+                if entry.period_key == period_key {
+                    return Ok(Some(i));
+                }
+            }
+        }
+        Ok(None)
+    }
 
+    fn adjust_storage_stats(
+        env: &Env,
+        active_add: u32,
+        active_sub: u32,
+        archived_add: u32,
+        archived_sub: u32,
+    ) {
+        let mut stats = Self::get_storage_stats(env.clone());
+        stats.active_reports = stats
+            .active_reports
+            .saturating_add(active_add)
+            .saturating_sub(active_sub);
+        stats.archived_reports = stats
+            .archived_reports
+            .saturating_add(archived_add)
+            .saturating_sub(archived_sub);
+        stats.last_updated = env.ledger().timestamp();
         env.storage()
             .instance()
             .set(&symbol_short!("STOR_STAT"), &stats);
+    }
+
+    fn store_legacy_map<K: IntoVal<Env, Val>, V: IntoVal<Env, Val>>(
+        env: &Env,
+        key: &Symbol,
+        map: &Map<K, V>,
+    ) {
+        env.storage().instance().set(key, map);
     }
 }
 
@@ -2614,3 +2977,6 @@ mod tests_safe_math;
 
 #[cfg(test)]
 mod tests_viewer_acl;
+
+#[cfg(test)]
+mod tests_archive_dedup;

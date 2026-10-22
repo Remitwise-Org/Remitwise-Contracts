@@ -1,18 +1,118 @@
 name: Soroban Smart Contracts CI
-'on':
+
+on:
   push:
     branches:
-    - main
+      - main
   pull_request:
     branches:
-    - main
+      - main
+
+permissions:
+  contents: read
+
 jobs:
-  build:
-    name: Workspace manifest check
+  contracts:
+    name: Contracts Gate (${{ matrix.crate }} / ${{ matrix.rust }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [orchestrator, reporting, remitwise-common]
+        rust: ['1.88.0', stable]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    - name: Validate workspace manifest
-      run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.crate }}-${{ matrix.rust }}
+
+      - name: Format check
+        run: cargo fmt -p ${{ matrix.crate }} -- --check
+
+      - name: Clippy
+        run: cargo clippy -p ${{ matrix.crate }} --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test -p ${{ matrix.crate }}
+
+      - name: Verify ignored test budget
+        run: |
+          case "${{ matrix.crate }}" in
+            remitwise-common) max_allowed=4 ;;
+            orchestrator) max_allowed=8 ;;
+            reporting) max_allowed=1 ;;
+            *) max_allowed=0 ;;
+          esac
+          ignored_count=$(cargo test -p ${{ matrix.crate }} -- --ignored --list | grep -c ': test$' || true)
+          echo "Ignored tests in ${{ matrix.crate }}: $ignored_count (budget: $max_allowed)"
+          if [ "$ignored_count" -gt "$max_allowed" ]; then
+            echo "::error::Ignored tests ($ignored_count) exceeds budget ($max_allowed) for ${{ matrix.crate }}!"
+            exit 1
+          fi
+
+      - name: Build WASM release
+        if: matrix.crate != 'remitwise-common'
+        run: cargo build -p ${{ matrix.crate }} --target wasm32-unknown-unknown --release
+
+  broken-crates:
+    name: Broken Crates Check (Non-Blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check excluded and broken crates
+        run: |
+          crates=(
+            "savings_goals:--manifest-path savings_goals/Cargo.toml"
+            "insurance:--manifest-path insurance/Cargo.toml"
+            "bill_payments:--manifest-path bill_payments/Cargo.toml"
+            "remittance_split:--manifest-path remittance_split/Cargo.toml"
+            "family_wallet:-p family_wallet"
+            "emergency_killswitch:-p emergency_killswitch"
+            "data_migration:-p data_migration"
+          )
+
+          echo "| Crate | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          for entry in "${crates[@]}"; do
+            crate_name="${entry%%:*}"
+            cargo_flags="${entry#*:}"
+            echo "Checking $crate_name ($cargo_flags)..."
+            if cargo check $cargo_flags 2>&1 | tail -n 5 > check_out.txt; then
+              status="✅ Passing"
+              details="Clean check"
+            else
+              status="❌ Failing"
+              details=$(head -n 1 check_out.txt | tr -d '|' || echo "Compilation errors")
+            fi
+            echo "| \`$crate_name\` | $status | $details |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Workspace Invariants (Non-Blocking)
+        continue-on-error: true
+        run: |
+          python3 scripts/check_workspace_invariants.py || true

@@ -421,11 +421,11 @@ fn test_report_maintenance_requires_configured_admin() {
     let attacker = Address::generate(&env);
 
     assert_eq!(
-        client.try_archive_old_reports(&attacker, &0u64),
+        client.try_archive_old_reports(&attacker, &attacker, &0u64, &100u32),
         Err(Ok(ReportingError::Unauthorized)),
     );
     assert_eq!(
-        client.try_cleanup_old_reports(&attacker, &0u64),
+        client.try_cleanup_old_reports(&attacker, &attacker, &0u64, &100u32),
         Err(Ok(ReportingError::Unauthorized)),
     );
 }

@@ -2,34 +2,17 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use remitwise_common::{
     bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
-    guard_cross_contract_write, require_matching_cross_contract_epoch, set_trusted_orchestrator,
-    CrossContractEpochError, TrustedOrchestratorError,
+    guard_cross_contract_write, set_trusted_orchestrator,
+    CrossContractEpochError, TrustedOrchestratorError, PERSISTENT_BUMP_AMOUNT,
+    PERSISTENT_LIFETIME_THRESHOLD,
     reversible_op::{ReversibleOpError, SavingsGoalsReversible},
     EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
+pub use remitwise_common::{DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
     Env, Map, String, Symbol, Vec,
 };
-
-/// Mirrors `bill_payments::Error`'s naming convention (`*NotFound`,
-/// `InvalidAmount`, `Unauthorized`) so the two neighbouring contracts
-/// report failures the same way instead of one panicking with a string
-/// and the other returning a typed error.
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum Error {
-    GoalNotFound = 1,
-    GoalLocked = 2,
-    InvalidAmount = 3,
-    InsufficientBalance = 4,
-    Unauthorized = 5,
-}
-
-// Storage TTL constants
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 
 /// Furthest into the future (from the current ledger time) a goal's
 /// `target_date` may be pushed in a single `extend_goal_deadline` call.
@@ -37,6 +20,114 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 /// `env.ledger().timestamp()` at call time, not to the goal's existing
 /// `target_date`, so repeated extensions can't be chained to sidestep it.
 const MAX_EXTENSION_SECONDS: u64 = 5 * 365 * 86400; // ~5 years
+
+// Original stable event topics and payload schemas are retained for indexers.
+const GOAL_CREATED: Symbol = symbol_short!("created");
+const GOAL_COMPLETED: Symbol = symbol_short!("completed");
+const FUNDS_ADDED: Symbol = symbol_short!("funds_add");
+const FUNDS_WITHDRAWN: Symbol = symbol_short!("funds_rem");
+
+#[derive(Clone)]
+#[contracttype]
+pub struct GoalCreatedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub name: String,
+    pub target_amount: i128,
+    pub target_date: u64,
+    pub locked: bool,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct FundsAddedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct FundsWithdrawnEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct GoalCompletedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub name: String,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct GoalLockEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub locked: bool,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleCreatedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleModifiedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleCancelledEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleExecutedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleMissedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub missed_count: u32,
+    pub timestamp: u64,
+}
+
+const MAX_SAFE_GOAL_BALANCE: i128 = i128::MAX / 2;
+const MAX_GOAL_NAME_LEN_BYTES: u32 = 32;
+const MAX_GOALS_PER_OWNER: u32 = 2000;
 
 /// Savings goal data structure with owner tracking for access control
 #[contract]
@@ -230,6 +321,8 @@ pub struct ContributionItem {
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
+// Retain the established SavingsGoalError discriminants; the temporary Error
+// enum used duplicate domain variants with incompatible numeric codes.
 pub enum SavingsGoalError {
     GoalNotFound = 1,
     InsufficientBalance = 2,
@@ -252,9 +345,6 @@ pub enum SavingsGoalError {
     SnapshotNotFound = 16,
     SnapshotTooOld = 17,
 }
-#[contract]
-pub struct SavingsGoalContract;
-
 impl ArchivedSavingsGoal {
     fn from_goal(env: &Env, goal: SavingsGoal) -> Self {
         Self {
@@ -1098,7 +1188,7 @@ impl SavingsGoalContract {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
-        if amount < 0 {
+        if amount <= 0 {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
             return Err(SavingsGoalError::InvalidAmount);
         }
@@ -1362,13 +1452,13 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, Error> {
+    ) -> Result<i128, SavingsGoalError> {
         // Access control: require caller authorization
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::WITHDRAW);
 
         if amount <= 0 {
-            return Err(Error::InvalidAmount);
+            return Err(SavingsGoalError::InvalidAmount);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1385,19 +1475,27 @@ impl SavingsGoalContract {
             }
         };
 
-        let mut goal = goals.get(goal_id).ok_or(Error::GoalNotFound)?;
-
         // Access control: verify caller is the owner
         if goal.owner != caller {
-            return Err(Error::Unauthorized);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         if goal.locked {
-            return Err(Error::GoalLocked);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::GoalLocked);
+        }
+
+        if let Some(unlock_date) = goal.unlock_date {
+            if env.ledger().timestamp() < unlock_date {
+                Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+                return Err(SavingsGoalError::GoalLocked);
+            }
         }
 
         if amount > goal.current_amount {
-            return Err(Error::InsufficientBalance);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::InsufficientBalance);
         }
 
         goal.current_amount = goal
@@ -1592,13 +1690,11 @@ impl SavingsGoalContract {
         // Extend storage TTL
         Self::extend_instance_ttl(&env);
 
-        let mut goals: Map<u32, SavingsGoal> = env
+        let mut goal = env
             .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+            .unwrap_or_else(|| panic!("Goal not found"));
 
         // Access control: verify caller is the owner
         if goal.owner != caller {
@@ -1615,10 +1711,14 @@ impl SavingsGoalContract {
         }
 
         goal.target_date = new_target_date;
-        goals.set(goal_id, goal);
         env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
 
         new_target_date
     }
@@ -2950,7 +3050,7 @@ impl SavingsGoalContract {
                 let elapsed = current_time.saturating_sub(schedule.next_due);
                 let periods = elapsed / schedule.interval;
                 let missed = periods as u32;
-                let periods_to_add = periods.saturating_add(1) as u64;
+                let periods_to_add = periods.saturating_add(1);
 
                 let next = periods_to_add
                     .checked_mul(schedule.interval)
@@ -3053,12 +3153,12 @@ impl SavingsGoalContract {
         match get_trusted_orchestrator(&env) {
             None => {
                 if caller != orchestrator {
-                    panic_with_error!(&env, Error::Unauthorized);
+                    panic_with_error!(&env, SavingsGoalError::Unauthorized);
                 }
             }
             Some(existing) => {
                 if caller != existing {
-                    panic_with_error!(&env, Error::Unauthorized);
+                    panic_with_error!(&env, SavingsGoalError::Unauthorized);
                 }
             }
         }
