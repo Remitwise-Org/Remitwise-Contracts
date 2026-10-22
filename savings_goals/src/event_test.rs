@@ -61,7 +61,7 @@ mod goal_completed_event_tests {
         );
 
         // Add exactly the target amount in one contribution
-        client.add_to_goal(&owner, &goal_id, &1_000_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1_000_i128) };
 
         // Exactly one completion → 2 events (legacy + RemitwiseEvents)
         assert_eq!(
@@ -94,7 +94,7 @@ mod goal_completed_event_tests {
         );
 
         // Contribute MORE than the target in a single call
-        client.add_to_goal(&owner, &goal_id, &750_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &750_i128) };
 
         assert_eq!(
             count_completed_events(&env),
@@ -122,7 +122,7 @@ mod goal_completed_event_tests {
         );
 
         // First contribution: partial (no completion yet)
-        client.add_to_goal(&owner, &goal_id, &400_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &400_i128) };
         assert_eq!(
             count_completed_events(&env),
             0,
@@ -131,7 +131,7 @@ mod goal_completed_event_tests {
         assert!(!client.is_goal_completed(&goal_id));
 
         // Second contribution: crosses the target
-        client.add_to_goal(&owner, &goal_id, &600_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &600_i128) };
         assert_eq!(
             count_completed_events(&env),
             2,
@@ -158,11 +158,11 @@ mod goal_completed_event_tests {
         );
 
         // Complete the goal → 2 events (legacy + RemitwiseEvents)
-        client.add_to_goal(&owner, &goal_id, &1_000_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1_000_i128) };
         assert_eq!(count_completed_events(&env), 2);
 
         // Add more funds after completion — must NOT emit additional events
-        client.add_to_goal(&owner, &goal_id, &500_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &500_i128) };
         assert_eq!(
             count_completed_events(&env),
             2,
@@ -184,12 +184,12 @@ mod goal_completed_event_tests {
             &false,
         );
 
-        client.add_to_goal(&owner, &goal_id, &2_000_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &2_000_i128) };
         assert_eq!(count_completed_events(&env), 2);
 
         // Three additional contributions after completion
         for _ in 0..3 {
-            client.add_to_goal(&owner, &goal_id, &100_i128);
+            { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &100_i128) };
         }
 
         assert_eq!(
@@ -296,7 +296,7 @@ mod goal_completed_event_tests {
         );
 
         // Complete via single add first → 2 events
-        client.add_to_goal(&owner, &goal_id, &300_i128);
+        { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &300_i128) };
         assert_eq!(count_completed_events(&env), 2);
 
         // Now include the same completed goal in a batch

@@ -21,29 +21,76 @@ fn create_test_env() -> Env {
 
 // Mock contracts for testing
 mod remittance_split {
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
+    use crate::SplitConfig;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Vec};
 
     #[contract]
     pub struct RemittanceSplit;
 
     #[contractimpl]
     impl RemittanceSplit {
-        pub fn get_split(env: &Env) -> Vec<u32> {
+        /// Test helper: store the trusted orchestrator that `get_split` requires.
+        pub fn set_trusted(env: Env, orchestrator: Address) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("TRUSTED"), &orchestrator);
+        }
+
+        /// Test helper: override the configured basis-point split.
+        pub fn set_percents(env: Env, a: u32, b: u32, c: u32, d: u32) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("PCTS"), &(a, b, c, d));
+        }
+
+        /// Test helper: when `false`, `get_config` returns `None`.
+        pub fn set_configured(env: Env, configured: bool) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("CONFIGD"), &configured);
+        }
+
+        /// Current provider ABI: guarded read; panics unless `orchestrator`
+        /// is the stored trusted address.
+        pub fn get_split(env: &Env, orchestrator: Address, _epoch: u64) -> Vec<u32> {
+            let trusted: Option<Address> = env.storage().instance().get(&symbol_short!("TRUSTED"));
+            if trusted != Some(orchestrator) {
+                panic!("untrusted orchestrator");
+            }
             let mut split = Vec::new(env);
-            split.push_back(5000);
+            split.push_back(4000);
             split.push_back(3000);
-            split.push_back(1500);
-            split.push_back(500);
+            split.push_back(2000);
+            split.push_back(1000);
             split
         }
 
-        pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
-            let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 5000 / 10000);
-            amounts.push_back(total_amount * 3000 / 10000);
-            amounts.push_back(total_amount * 1500 / 10000);
-            amounts.push_back(total_amount * 500 / 10000);
-            amounts
+        /// Current provider ABI: unguarded public view.
+        pub fn get_config(env: Env) -> Option<SplitConfig> {
+            let configured: bool = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("CONFIGD"))
+                .unwrap_or(true);
+            if !configured {
+                return None;
+            }
+            let p: (u32, u32, u32, u32) = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("PCTS"))
+                .unwrap_or((5000, 3000, 1500, 500));
+            Some(SplitConfig {
+                owner: Address::generate(&env),
+                spending_percent: p.0,
+                savings_percent: p.1,
+                bills_percent: p.2,
+                insurance_percent: p.3,
+                timestamp: 0,
+                initialized: true,
+                usdc_contract: Address::generate(&env),
+            })
         }
     }
 }
@@ -1080,15 +1127,16 @@ fn test_get_remittance_summary_missing_addresses() {
 }
 
 mod failing_remittance_split {
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
+    use crate::SplitConfig;
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
     #[contract]
     pub struct FailingRemittanceSplit;
     #[contractimpl]
     impl FailingRemittanceSplit {
-        pub fn get_split(_env: &Env) -> Vec<u32> {
+        pub fn get_split(_env: &Env, _orchestrator: Address, _epoch: u64) -> Vec<u32> {
             panic!("Remote call failing to simulate Partial Data");
         }
-        pub fn calculate_split(_env: Env, _total_amount: i128) -> Vec<i128> {
+        pub fn get_config(_env: Env) -> Option<SplitConfig> {
             panic!("Remote call failing to simulate Partial Data");
         }
     }
@@ -2150,7 +2198,7 @@ fn test_archive_old_reports() {
     let period_key = 202401u64;
     client.store_report(&user, &report, &period_key);
 
-    let archive_result = client.try_archive_old_reports(&admin, &2000000000);
+    let archive_result = client.try_archive_old_reports(&admin, &user, &2000000000, &100);
     assert!(archive_result.is_ok());
     assert_eq!(archive_result.unwrap().unwrap(), 1);
 
@@ -2202,9 +2250,9 @@ fn test_cleanup_old_reports() {
     assert_eq!(stats.archived_reports, 0);
 
     // Archive and check stats
-    client.archive_old_reports(&admin, &2000000000);
+    client.archive_old_reports(&admin, &user, &2000000000, &100);
 
-    let cleanup_result = client.try_cleanup_old_reports(&admin, &2000000000);
+    let cleanup_result = client.try_cleanup_old_reports(&admin, &user, &2000000000, &100);
     assert!(cleanup_result.is_ok());
     assert_eq!(cleanup_result.unwrap().unwrap(), 1);
 }
@@ -2263,7 +2311,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
     // Partial archive: only reports with generated_at < cutoff move to ARCH_RPT
     let archive_cutoff = base_ts + 8;
     set_ledger_time(&env, 500, base_ts + 100);
-    let n_archived = client.archive_old_reports(&admin, &archive_cutoff);
+    let n_archived = client.archive_old_reports(&admin, &user, &archive_cutoff, &100);
     assert_eq!(n_archived, 8);
 
     let after_partial = client.get_storage_stats();
@@ -2274,7 +2322,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
     // Post-cleanup: archives removed; actives unchanged
     let cleanup_before = base_ts + 200;
     set_ledger_time(&env, 600, base_ts + 150);
-    let deleted = client.cleanup_old_reports(&admin, &cleanup_before);
+    let deleted = client.cleanup_old_reports(&admin, &user, &cleanup_before, &100);
     assert_eq!(deleted, 8);
 
     let after_cleanup = client.get_storage_stats();
@@ -2292,13 +2340,13 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
     assert_eq!(after_new_store.archived_reports, 0);
 
     set_ledger_time(&env, 800, base_ts + 400);
-    client.archive_old_reports(&admin, &(base_ts + 500));
+    client.archive_old_reports(&admin, &user, &(base_ts + 500), &100);
     let after_second_archive = client.get_storage_stats();
     assert_eq!(after_second_archive.active_reports, 0);
     assert_eq!(after_second_archive.archived_reports, 9);
 
     set_ledger_time(&env, 900, base_ts + 500);
-    assert_eq!(client.cleanup_old_reports(&admin, &(base_ts + 600)), 9);
+    assert_eq!(client.cleanup_old_reports(&admin, &user, &(base_ts + 600), &100), 9);
     let final_stats = client.get_storage_stats();
     assert_eq!(final_stats.active_reports, 0);
     assert_eq!(final_stats.archived_reports, 0);
@@ -2312,11 +2360,12 @@ fn test_archive_unauthorized() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let non_admin = Address::generate(&env);
+    let user = Address::generate(&env);
 
     client.init(&admin);
 
     // Non-admin tries to archive
-    let result = client.try_archive_old_reports(&non_admin, &2000000000);
+    let result = client.try_archive_old_reports(&non_admin, &user, &2000000000, &100);
     assert!(result.is_err());
 }
 
@@ -2328,11 +2377,12 @@ fn test_cleanup_unauthorized() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let non_admin = Address::generate(&env);
+    let user = Address::generate(&env);
 
     client.init(&admin);
 
     // Non-admin tries to cleanup
-    let result = client.try_cleanup_old_reports(&non_admin, &2000000000);
+    let result = client.try_cleanup_old_reports(&non_admin, &user, &2000000000, &100);
     assert!(result.is_err());
 }
 
@@ -2683,7 +2733,7 @@ fn test_archive_old_reports_admin_succeeds() {
     let report = make_report(&env, &client, &user);
     client.store_report(&user, &report, &202_401u64);
 
-    let count = client.archive_old_reports(&admin, &2_000_000_000u64);
+    let count = client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
     assert_eq!(count, 1, "admin must be able to archive reports");
 }
 
@@ -2695,7 +2745,7 @@ fn test_archive_old_reports_non_admin_rejected() {
     let (client, _, _, _, _, _) = setup_reporting(&env);
     let attacker = Address::generate(&env);
 
-    let result = client.try_archive_old_reports(&attacker, &2_000_000_000u64);
+    let result = client.try_archive_old_reports(&attacker, &attacker, &2_000_000_000u64, &100u32);
     assert_eq!(result, Err(Ok(ReportingError::Unauthorized)));
 }
 
@@ -2711,7 +2761,7 @@ fn test_archive_old_reports_regular_user_rejected() {
     client.store_report(&user, &report, &202_401u64);
 
     // user tries to archive — must be rejected
-    let result = client.try_archive_old_reports(&user, &2_000_000_000u64);
+    let result = client.try_archive_old_reports(&user, &user, &2_000_000_000u64, &100u32);
     assert_eq!(result, Err(Ok(ReportingError::Unauthorized)));
 }
 
@@ -2721,8 +2771,9 @@ fn test_archive_old_reports_records_admin_auth() {
     let env = create_test_env();
     set_ledger_time(&env, 1, 1_704_067_200);
     let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
 
-    client.archive_old_reports(&admin, &2_000_000_000u64);
+    client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
 
     let auths = env.auths();
     let found = auths.iter().any(|(addr, _)| same_address(addr, &admin));
@@ -2744,9 +2795,9 @@ fn test_cleanup_old_reports_admin_succeeds() {
 
     let report = make_report(&env, &client, &user);
     client.store_report(&user, &report, &202_401u64);
-    client.archive_old_reports(&admin, &2_000_000_000u64);
+    client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
 
-    let deleted = client.cleanup_old_reports(&admin, &2_000_000_000u64);
+    let deleted = client.cleanup_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
     assert_eq!(deleted, 1, "admin must be able to cleanup archived reports");
 }
 
@@ -2758,7 +2809,7 @@ fn test_cleanup_old_reports_non_admin_rejected() {
     let (client, _, _, _, _, _) = setup_reporting(&env);
     let attacker = Address::generate(&env);
 
-    let result = client.try_cleanup_old_reports(&attacker, &2_000_000_000u64);
+    let result = client.try_cleanup_old_reports(&attacker, &attacker, &2_000_000_000u64, &100u32);
     assert_eq!(result, Err(Ok(ReportingError::Unauthorized)));
 }
 
@@ -2772,10 +2823,10 @@ fn test_cleanup_old_reports_regular_user_rejected() {
 
     let report = make_report(&env, &client, &user);
     client.store_report(&user, &report, &202_401u64);
-    client.archive_old_reports(&admin, &2_000_000_000u64);
+    client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
 
     // user tries to cleanup — must be rejected
-    let result = client.try_cleanup_old_reports(&user, &2_000_000_000u64);
+    let result = client.try_cleanup_old_reports(&user, &user, &2_000_000_000u64, &100u32);
     assert_eq!(result, Err(Ok(ReportingError::Unauthorized)));
 }
 
@@ -2785,8 +2836,9 @@ fn test_cleanup_old_reports_records_admin_auth() {
     let env = create_test_env();
     set_ledger_time(&env, 1, 1_704_067_200);
     let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
 
-    client.cleanup_old_reports(&admin, &2_000_000_000u64);
+    client.cleanup_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
 
     let auths = env.auths();
     let found = auths.iter().any(|(addr, _)| same_address(addr, &admin));
@@ -2816,7 +2868,8 @@ fn test_get_archived_reports_user_isolation() {
     client.store_report(&user_b, &report_b, &202_401u64);
 
     // Archive both
-    client.archive_old_reports(&admin, &2_000_000_000u64);
+    client.archive_old_reports(&admin, &user_a, &2_000_000_000u64, &100u32);
+    client.archive_old_reports(&admin, &user_b, &2_000_000_000u64, &100u32);
 
     let archived_a = client.get_archived_reports(&user_a);
     let archived_b = client.get_archived_reports(&user_b);
@@ -2859,7 +2912,7 @@ fn test_get_archived_reports_empty_for_unknown_user() {
 
     let report = make_report(&env, &client, &user_a);
     client.store_report(&user_a, &report, &202_401u64);
-    client.archive_old_reports(&admin, &2_000_000_000u64);
+    client.archive_old_reports(&admin, &user_a, &2_000_000_000u64, &100u32);
 
     // user_b has no archived reports
     let archived = client.get_archived_reports(&user_b);
@@ -2888,14 +2941,20 @@ fn test_cleanup_does_not_remove_other_users_archives() {
     client.store_report(&user_b, &report_b, &202_401u64);
 
     // Archive both at timestamp 1_704_067_200
-    client.archive_old_reports(&admin, &2_000_000_000u64);
+    client.archive_old_reports(&admin, &user_a, &2_000_000_000u64, &100u32);
+    client.archive_old_reports(&admin, &user_b, &2_000_000_000u64, &100u32);
 
-    // Cleanup only archives created before 1_704_067_201 (both qualify)
-    let deleted = client.cleanup_old_reports(&admin, &2_000_000_000u64);
-    assert_eq!(deleted, 2, "both archives must be cleaned up");
+    // Cleanup only user_a's archive
+    let deleted_a = client.cleanup_old_reports(&admin, &user_a, &2_000_000_000u64, &100u32);
+    assert_eq!(deleted_a, 1, "user_a archive must be cleaned up");
 
-    // Both users' archives are gone
+    // user_a's archive is gone, user_b's archive remains intact
     assert_eq!(client.get_archived_reports(&user_a).len(), 0);
+    assert_eq!(client.get_archived_reports(&user_b).len(), 1);
+
+    // Now cleanup user_b
+    let deleted_b = client.cleanup_old_reports(&admin, &user_b, &2_000_000_000u64, &100u32);
+    assert_eq!(deleted_b, 1, "user_b archive must be cleaned up");
     assert_eq!(client.get_archived_reports(&user_b).len(), 0);
 }
 
@@ -2910,10 +2969,10 @@ fn test_cleanup_past_timestamp_removes_nothing() {
 
     let report = make_report(&env, &client, &user);
     client.store_report(&user, &report, &202_401u64);
-    client.archive_old_reports(&admin, &2_000_000_000u64);
+    client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
 
     // Cleanup with timestamp 0 — nothing is older than epoch 0
-    let deleted = client.cleanup_old_reports(&admin, &0u64);
+    let deleted = client.cleanup_old_reports(&admin, &user, &0u64, &100u32);
     assert_eq!(
         deleted, 0,
         "cleanup with past timestamp must remove nothing"
@@ -2953,7 +3012,10 @@ fn test_multi_user_full_lifecycle_no_data_leakage() {
     }
 
     // Archive all
-    let archived_count = client.archive_old_reports(&admin, &2_000_000_000u64);
+    let mut archived_count = 0;
+    for user in &users {
+        archived_count += client.archive_old_reports(&admin, user, &2_000_000_000u64, &100u32);
+    }
     assert_eq!(
         archived_count, 6,
         "6 reports (3 users × 2 periods) must be archived"
@@ -2978,7 +3040,10 @@ fn test_multi_user_full_lifecycle_no_data_leakage() {
     }
 
     // Cleanup
-    let deleted = client.cleanup_old_reports(&admin, &2_000_000_000u64);
+    let mut deleted = 0;
+    for user in &users {
+        deleted += client.cleanup_old_reports(&admin, user, &2_000_000_000u64, &100u32);
+    }
     assert_eq!(deleted, 6);
 
     // All archives gone
@@ -3000,7 +3065,7 @@ fn test_archive_timestamp_boundary_preserves_recent_reports() {
     client.store_report(&user, &report, &202_401u64);
 
     // Archive with before_timestamp = 1_000_000_000 (before the report's generated_at)
-    let archived = client.archive_old_reports(&admin, &1_000_000_000u64);
+    let archived = client.archive_old_reports(&admin, &user, &1_000_000_000u64, &100u32);
     assert_eq!(
         archived, 0,
         "report generated after cutoff must not be archived"
@@ -3844,3 +3909,314 @@ fn test_top_n_reports() {
     assert_eq!(savings_report.items.get(0).unwrap().target_amount, 10000);
     assert_eq!(savings_report.items.get(1).unwrap().target_amount, 5000);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance Criteria Tests: Persistent Storage Migration & Performance
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Acceptance Criterion 1:
+/// Test store_report_cost_independent_of_other_users:
+/// In a test with env.budget().reset_unlimited(), store 1 report each for 10 vs 400 other users.
+/// The CPU cost of the measured store_report differs by <= 10%.
+#[test]
+fn test_store_report_cost_independent_of_other_users() {
+    let env = create_test_env();
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+
+    // Baseline: store 1 report for 10 distinct users
+    for _ in 0..10 {
+        let u = Address::generate(&env);
+        let r = make_report(&env, &client, &u);
+        client.store_report(&u, &r, &202_401u64);
+    }
+
+    let measured_user_1 = Address::generate(&env);
+    let measured_report_1 = make_report(&env, &client, &measured_user_1);
+
+    env.budget().reset_unlimited();
+    let cpu_before_1 = env.budget().cpu_instruction_cost();
+    client.store_report(&measured_user_1, &measured_report_1, &202_401u64);
+    let cpu_after_1 = env.budget().cpu_instruction_cost();
+    let cost_at_10 = cpu_after_1.saturating_sub(cpu_before_1);
+
+    // Scale up: store 1 report for 390 additional users (total 400 other users)
+    for _ in 0..390 {
+        let u = Address::generate(&env);
+        let r = make_report(&env, &client, &u);
+        client.store_report(&u, &r, &202_401u64);
+    }
+
+    let measured_user_2 = Address::generate(&env);
+    let measured_report_2 = make_report(&env, &client, &measured_user_2);
+
+    env.budget().reset_unlimited();
+    let cpu_before_2 = env.budget().cpu_instruction_cost();
+    client.store_report(&measured_user_2, &measured_report_2, &202_401u64);
+    let cpu_after_2 = env.budget().cpu_instruction_cost();
+    let cost_at_400 = cpu_after_2.saturating_sub(cpu_before_2);
+
+    let diff = if cost_at_400 >= cost_at_10 {
+        cost_at_400 - cost_at_10
+    } else {
+        cost_at_10 - cost_at_400
+    };
+    let ratio = (diff as f64) / (cost_at_10 as f64);
+
+    assert!(
+        ratio <= 0.10,
+        "CPU cost must be within 10% independent of other users: cost_at_10={}, cost_at_400={}, ratio={}",
+        cost_at_10,
+        cost_at_400,
+        ratio
+    );
+}
+
+/// Acceptance Criterion 2:
+/// Test store_report_enforces_per_user_cap:
+/// The 121st active report for one user fails with TooManyActiveReports (16), and other users are unaffected.
+#[test]
+fn test_store_report_enforces_per_user_cap() {
+    let env = create_test_env();
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let report_a = make_report(&env, &client, &user_a);
+    let report_b = make_report(&env, &client, &user_b);
+
+    // Store up to MAX_ACTIVE_REPORTS_PER_USER (120) for user_a
+    for period in 1..=120u64 {
+        assert_eq!(client.store_report(&user_a, &report_a, &period), true);
+    }
+
+    // 121st active report for user_a must fail with TooManyActiveReports
+    let res = client.try_store_report(&user_a, &report_a, &121u64);
+    assert_eq!(res, Err(Ok(ReportingError::TooManyActiveReports)));
+
+    // Other users are unaffected — user_b can store their report
+    assert_eq!(client.store_report(&user_b, &report_b, &1u64), true);
+}
+
+/// Acceptance Criterion 3:
+/// Test archive_is_paginated_and_bounded:
+/// 250 old reports for one user, limit = 100 -> 100/100/50 archived across three calls,
+/// and all are retrievable via get_archived_reports_page.
+#[test]
+fn test_archive_is_paginated_and_bounded() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    // Seed 250 reports directly into persistent storage for user to test pagination
+    // (since store_report caps active at 120, simulate accumulated/migrated reports in index)
+    let mut index: Vec<crate::ReportIndexEntry> = Vec::new(&env);
+    let r = make_report(&env, &client, &user);
+    for period in 1..=250u64 {
+        let key = crate::DataKey::Report(user.clone(), period);
+        env.as_contract(&client.address, || {
+            env.storage().persistent().set(&key, &r);
+        });
+        index.push_back(crate::ReportIndexEntry {
+            period_key: period,
+            generated_at: 1_704_067_200,
+        });
+    }
+    let idx_key = crate::DataKey::ReportIndex(user.clone());
+    env.as_contract(&client.address, || {
+        env.storage().persistent().set(&idx_key, &index);
+        crate::adjust_storage_stats(&env, 250, 0, 0, 0);
+    });
+
+    // Call 1: limit = 100 -> archives 100
+    let a1 = client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
+    assert_eq!(a1, 100);
+
+    // Call 2: limit = 100 -> archives 100
+    let a2 = client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
+    assert_eq!(a2, 100);
+
+    // Call 3: limit = 100 -> archives remaining 50
+    let a3 = client.archive_old_reports(&admin, &user, &2_000_000_000u64, &100u32);
+    assert_eq!(a3, 50);
+
+    // Total archived: 250
+    let page1 = client.get_archived_reports_page(&user, &0u32, &150u32);
+    assert_eq!(page1.items.len(), 150);
+    assert_eq!(page1.total_count, 250);
+    assert_eq!(page1.has_more, true);
+
+    let page2 = client.get_archived_reports_page(&user, &page1.next_cursor, &150u32);
+    assert_eq!(page2.items.len(), 100);
+    assert_eq!(page2.has_more, false);
+}
+
+/// Acceptance Criterion 4:
+/// Test migration_moves_legacy_data:
+/// Seed the legacy instance maps via env.as_contract, run migration in pages of 50,
+/// then every report, archive, index and grant is readable through the public API
+/// and the instance keys REPORTS, ARCH_RPT, ARCH_IDX and VIEW_ACL are absent.
+#[test]
+fn test_migration_moves_legacy_data() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+    let viewer = Address::generate(&env);
+
+    let rep = make_report(&env, &client, &user_a);
+    let arch = crate::ArchivedReport {
+        user: user_a.clone(),
+        period_key: 100u64,
+        report: rep.clone(),
+        archived_at: 1_704_067_200,
+    };
+
+    // Seed legacy maps in instance storage
+    env.as_contract(&client.address, || {
+        let mut reports: soroban_sdk::Map<(Address, u64), crate::FinancialHealthReport> =
+            soroban_sdk::Map::new(&env);
+        reports.set((user_a.clone(), 202_401u64), rep.clone());
+        reports.set((user_b.clone(), 202_401u64), rep.clone());
+        env.storage()
+            .instance()
+            .set(&crate::LEGACY_REPORTS, &reports);
+
+        let mut archives: soroban_sdk::Map<(Address, u64), crate::ArchivedReport> =
+            soroban_sdk::Map::new(&env);
+        archives.set((user_a.clone(), 100u64), arch.clone());
+        env.storage()
+            .instance()
+            .set(&crate::LEGACY_ARCH_RPT, &archives);
+
+        let mut arch_idx: soroban_sdk::Map<Address, Vec<u64>> = soroban_sdk::Map::new(&env);
+        let mut u_a_idx = Vec::new(&env);
+        u_a_idx.push_back(100u64);
+        arch_idx.set(user_a.clone(), u_a_idx);
+        env.storage()
+            .instance()
+            .set(&crate::LEGACY_ARCH_IDX, &arch_idx);
+
+        let mut acl: soroban_sdk::Map<(Address, Address, crate::ReportScope), u64> =
+            soroban_sdk::Map::new(&env);
+        acl.set(
+            (user_a.clone(), viewer.clone(), crate::ReportScope::All),
+            1_800_000_000u64,
+        );
+        env.storage().instance().set(&crate::LEGACY_VIEW_ACL, &acl);
+    });
+
+    // Run migration in pages of 50 until complete (returns 0 migrated)
+    loop {
+        let migrated = client.migrate_reports_to_persistent(&admin, &50u32);
+        if migrated == 0 {
+            break;
+        }
+    }
+
+    // Verify all legacy instance keys are absent
+    env.as_contract(&client.address, || {
+        assert!(!env.storage().instance().has(&crate::LEGACY_REPORTS));
+        assert!(!env.storage().instance().has(&crate::LEGACY_ARCH_RPT));
+        assert!(!env.storage().instance().has(&crate::LEGACY_ARCH_IDX));
+        assert!(!env.storage().instance().has(&crate::LEGACY_VIEW_ACL));
+    });
+
+    // Public API verification
+    let r_a = client.get_stored_report(&user_a, &user_a, &202_401u64);
+    assert!(r_a.is_some());
+    let r_b = client.get_stored_report(&user_b, &user_b, &202_401u64);
+    assert!(r_b.is_some());
+
+    let page = client.get_archived_reports_page(&user_a, &0u32, &10u32);
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items.get(0).unwrap().period_key, 100u64);
+
+    let grant_expiry =
+        client.viewer_grant_expiry(&user_a, &viewer, &crate::ReportScope::All);
+    assert_eq!(grant_expiry, 1_800_000_000u64);
+}
+
+/// Acceptance Criterion 5:
+/// Test reads_fall_back_before_migration:
+/// Before migration, get_stored_report returns the legacy entry.
+#[test]
+fn test_reads_fall_back_before_migration() {
+    let env = create_test_env();
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+    let rep = make_report(&env, &client, &user);
+
+    // Seed into legacy map only
+    env.as_contract(&client.address, || {
+        let mut reports: soroban_sdk::Map<(Address, u64), crate::FinancialHealthReport> =
+            soroban_sdk::Map::new(&env);
+        reports.set((user.clone(), 202_401u64), rep.clone());
+        env.storage()
+            .instance()
+            .set(&crate::LEGACY_REPORTS, &reports);
+    });
+
+    // get_stored_report must fall back and return the legacy report
+    let fetched = client.get_stored_report(&user, &user, &202_401u64);
+    assert!(fetched.is_some());
+    assert_eq!(fetched.unwrap().user, user);
+}
+
+/// Acceptance Criterion 6:
+/// Test storage_stats_stay_consistent:
+/// After a random/deterministic sequence of 200 store/archive/cleanup operations,
+/// get_storage_stats() equals a recount.
+#[test]
+fn test_storage_stats_stay_consistent() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+
+    let users: [Address; 5] = [
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+    ];
+
+    let mut actual_active = 0u32;
+    let mut actual_archived = 0u32;
+
+    // Run 200 operations across the 5 users
+    for i in 1..=200u64 {
+        let u_idx = (i as usize) % 5;
+        let u = &users[u_idx];
+        let op = i % 4;
+
+        match op {
+            0 | 1 => {
+                // Store report
+                let r = make_report(&env, &client, u);
+                let period = 1_000 + i;
+                if client.store_report(u, &r, &period) {
+                    actual_active += 1;
+                }
+            }
+            2 => {
+                // Archive up to 2 reports
+                let archived = client.archive_old_reports(&admin, u, &2_000_000_000u64, &2u32);
+                actual_active = actual_active.saturating_sub(archived);
+                actual_archived += archived;
+            }
+            _ => {
+                // Cleanup up to 1 report
+                let cleaned = client.cleanup_old_reports(&admin, u, &2_000_000_000u64, &1u32);
+                actual_archived = actual_archived.saturating_sub(cleaned);
+            }
+        }
+    }
+
+    let stats = client.get_storage_stats();
+    assert_eq!(stats.active_reports, actual_active);
+    assert_eq!(stats.archived_reports, actual_archived);
+}
+

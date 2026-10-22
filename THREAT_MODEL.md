@@ -1571,3 +1571,79 @@ Delegation is intentionally unsupported for this entry point. A non-owner cannot
 - `bill_payments::pay_bill()` remains the source of truth for bill ownership and must continue rejecting non-owners.
 - The orchestrator does not support approved delegates for bill payment execution; adding one in the future would require explicit stored authorization state and new tests.
 - Replay safety depends on preserving the caller-scoped nonce record in persistent storage.
+
+
+## Remittance Flow and Fan-Out Authorization Bypass Mitigation
+
+### Threats & Original Risks
+
+#### 1. `execute_remittance_flow` Dependency Substitution Bypass
+In previous implementations, `execute_remittance_flow` accepted dependency addresses directly from user input via `RemittanceFlowParams` (`family_wallet`, `remittance_split`, `savings`, `bills`, `insurance`), and `FlowRouting::from_params` forwarded them verbatim without cross-referencing instance storage initialized at deployment.
+
+**Attack Vector:**
+A family member whose spending limit in the legitimate `family_wallet` was insufficient (or an external attacker) could invoke `execute_remittance_flow` with:
+- `family_wallet` pointing to an attacker-controlled mock contract whose `check_spending_limit` unconditionally returns `true` (and a custom `remittance_split` if desired)
+- `savings`, `bills`, and `insurance` pointing to the legitimate downstream contracts.
+
+Because downstream contracts verify the caller is the orchestrator and validate the cross-contract epoch (both of which are legitimate), the downstream state mutations (`add_to_goal`, `pay_bill`, `pay_premium`) would succeed, bypassing the family wallet's spending limits.
+
+#### 2. `execute_flow_fanout` Guard & Lifecycle Omission Bypass
+`execute_flow_fanout` was introduced as a best-effort distribution entrypoint, but omitted:
+1. `check_spending_limit` call against the configured `family_wallet`.
+2. `EXEC_LOCK` reentrancy guard checking and holding.
+3. Flow outcome recording in execution stats and the audit ring-buffer.
+4. Lifecycle event emissions (`flow`, `flow_ok`, `flow_fail`).
+
+**Attack Vector:**
+Any caller could trigger `execute_flow_fanout` without spending limit verification, completely bypassing family wallet budgeting controls and reentrancy protections.
+
+---
+
+### Mitigations
+
+#### 1. Storage-Validated Routing for `execute_remittance_flow`
+- `FlowRouting::from_params` now resolves dependencies from trusted instance storage (`FW_ADDR`, `RS_ADDR`, `SG_ADDR`, `BP_ADDR`, `INS_ADDR`) and verifies that all 5 addresses in `RemittanceFlowParams` strictly match the stored configuration.
+- If any address differs or if the orchestrator is uninitialized, the call fails immediately with `OrchestratorError::InvalidDependency` before any cross-contract invocation occurs.
+- Execution parameter IDs (`goal_id`, `bill_id`, `policy_id`) continue to be accepted from params to maintain backward ABI compatibility.
+
+**Validation Order for `execute_remittance_flow`:**
+1. Authentication: `params.caller.require_auth()`
+2. Input validation: `params.total_amount > 0` (on error: record validation failure, return `InvalidAmount`)
+3. Reentrancy guard pre-check: `EXEC_LOCK == false` (on error: record validation failure, return `ExecutionLocked`)
+4. Event emission: emit `flow` lifecycle event
+5. Execution lock: acquire `EXEC_LOCK` (held by RAII `LockGuard`)
+6. Dependency validation: `FlowRouting::from_params(env, params)` verifies all 5 addresses against storage (on error: returns `InvalidDependency`)
+7. Spending limit check: `family_wallet.check_spending_limit(...)` (on error: returns `Unauthorized`)
+8. Split calculation & downstream writes (`add_to_goal`, `pay_bill`, `pay_premium`)
+9. Lock release: `LockGuard` drops, resetting `EXEC_LOCK` to `false`
+10. Outcome recording: `record_flow_outcome` updates stats, writes `flow_exec` audit entry, and emits `flow_ok` or `flow_fail`
+
+#### 2. Guard Hardening for `execute_flow_fanout`
+- **Validation**: Rejects `amount <= 0` with `InvalidAmount` and records validation failure.
+- **Reentrancy Guard**: Checks and holds `EXEC_LOCK` for the duration of cross-contract calls using `LockGuard`. Returns `ExecutionLocked` if reentrancy is attempted.
+- **Spending Limit**: Queries `check_spending_limit` on the stored `family_wallet` contract before performing any downstream writes. Returns `Unauthorized` if denied.
+- **Lifecycle & Auditing**:
+  - Emits `flow` lifecycle event upon starting.
+  - Upon completion, calls `record_flow_outcome`:
+    - If `all_succeeded == true`: records success in stats, writes audit log, emits `flow_ok`.
+    - If any step failed: records failure in stats, writes audit log, emits `flow_fail`.
+
+**Validation Order for `execute_flow_fanout`:**
+1. Extend instance TTL
+2. Authentication: `executor.require_auth()`
+3. Input validation: `amount > 0` (on error: record validation failure, return `InvalidAmount`)
+4. Reentrancy guard pre-check: `EXEC_LOCK == false` (on error: record validation failure, return `ExecutionLocked`)
+5. Event emission: emit `flow` lifecycle event
+6. Execution lock: acquire `EXEC_LOCK` (held by RAII `LockGuard`)
+7. Dependency resolution: load trusted dependencies from storage (`FlowRouting::from_storage`)
+8. Spending limit check: `family_wallet.check_spending_limit(...)` on stored wallet (on denial: return `Unauthorized`)
+9. Split calculation & downstream calls: invoke `calculate_split` and attempt `try_add_to_goal`, `try_pay_bill`, `try_pay_premium` independently
+10. Lock release: `LockGuard` drops, resetting `EXEC_LOCK` to `false`
+11. Outcome recording: `record_flow_outcome` updates stats, writes `flow_exec` audit entry, and emits `flow_ok` or `flow_fail`
+
+---
+
+### Security Properties
+- **Invariant: No Downstream Write Without Stored Spending Check**: Downstream contracts (`savings_goals`, `bill_payments`, `insurance`) can never be called without prior authorization from the stored `family_wallet`'s `check_spending_limit`.
+- **Invariant: Immutable Dependency Trust Boundary**: Callers cannot substitute dependency addresses; only the addresses registered at contract initialization by the contract owner are trusted.
+- **Invariant: Uniform Reentrancy & Audit Logging**: All execution entrypoints (`execute_remittance_flow`, `execute_remittance_flow_signed`, `execute_flow_fanout`) consistently enforce `EXEC_LOCK`, record `flow_exec` audit entries, and emit `flow` lifecycle events.

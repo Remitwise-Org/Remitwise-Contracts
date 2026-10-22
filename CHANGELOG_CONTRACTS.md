@@ -93,6 +93,21 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Emergency Kill Switch (`emergency_killswitch`)
 
+### v0.2.1
+
+- **Summary**: Restored missing checked-arithmetic helpers (`checked_add_u64`, `checked_add_u32`, `recovery_ready_at`, `snapshot_age`), fixed error discriminants, and repaired pagination test compilation (Issue #1865).
+- **Changes**:
+  - `activate` now computes the recovery deadline with checked arithmetic in the validation phase (previously `saturating_add`, which silently pinned the deadline at `u64::MAX` on overflow); a near-`u64::MAX` clock returns `Error::Overflow` with **zero** writes — no orphaned activation markers.
+  - `bump_kill_switch_epoch` / `configure_signers*` epoch increments and `migrate_storage` step advances return `Error::Overflow` without partially updating persistent state (all checks precede all writes).
+  - `restore_from_snapshot` rejects future-dated snapshots (`now < taken_at`) with `Error::Overflow` instead of underflowing the snapshot age.
+  - Pagination test module compiles again (`vec!` import, test-only `std` for `format!`, `&1` threshold args, `push_back` construction instead of collecting an iterator into `soroban_sdk::Vec`). No assertions or production behavior changed.
+- **Error Discriminants (ABI decision)**:
+  - `Error::Overflow = 20` — **keeps the pinned value.** `20` was already asserted by existing tests (`epoch_mismatch_error_discriminant_is_seven`, `error_discriminants_are_stable`) and documented in `ACTIVATION_RECOVERY_POLICY.md`, so downstream integrations treating `20` as the overflow code continue to work unchanged.
+  - `Error::InvalidCursor = 21` — moved from `20` to make room. This is safe: `InvalidCursor` is declared but **never produced or matched** by any entry point, test, or indexer in this repository (pagination cursors out of range return an empty page, not an error), so no pinned contract exists for its value.
+  - All other discriminants (`1..=19`) are preserved.
+- **Migration Notes**: No storage migration required. Off-chain code keying on `Error::Overflow == 20` is unaffected; do not key on `InvalidCursor == 20` (it is now `21`).
+- **Tests**: Added regression tests covering `checked_add_*` overflow/happy paths, `recovery_ready_at` at the `u64::MAX` boundary, future-dated snapshot rejection with state preservation, the exact `SNAPSHOT_TTL` / `SNAPSHOT_TTL + 1` restore boundary, and signer-set preservation when the signer epoch is `u64::MAX`.
+
 ### v0.2.0
 
 - **Summary**: Added a versioned, correlation-tagged control/audit event stream for every committed emergency transition — pause, recovery, threshold approval, and administrator rotation (Issue #1761).
@@ -113,6 +128,39 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Reporting (`reporting`)
 
+### v0.3.0
+
+- **Summary**: Migrated all per-user data (active reports, archives, indexes, and viewer grants) from single instance-storage maps to per-record persistent storage entries to eliminate unbounded instance data growth and host-budget reverts. Added active report caps, paginated per-user archiving/cleanup, incremental storage stats, and a zero-downtime migration path.
+- **Changes**:
+  - Moved per-user records from instance storage `Map`s to persistent storage keys:
+    - `DataKey::Report(Address, u64)`: active report
+    - `DataKey::ReportIndex(Address)`: per-user list of active period keys, capped at `MAX_ACTIVE_REPORTS_PER_USER = 120`
+    - `DataKey::Archived(Address, u64)`: archived report
+    - `DataKey::ArchiveIndex(Address)`: per-user archive index, capped at `MAX_ARCHIVE_PER_USER = 500`
+    - `DataKey::ViewerGrant(Address, Address, ReportScope)`: per-grant expiry timestamp
+  - `store_report`: now enforces `MAX_ACTIVE_REPORTS_PER_USER = 120`. Attempting to store a 121st active report returns typed error `ReportingError::TooManyActiveReports = 16`.
+  - `archive_old_reports`: updated ABI to `(caller: Address, user: Address, before_timestamp: u64, limit: u32) -> u32`. Archiving is now paginated and scoped per user, bounded by `limit`.
+  - `cleanup_old_reports`: updated ABI to `(caller: Address, user: Address, before_timestamp: u64, limit: u32) -> u32`. Cleanup is now paginated and scoped per user, bounded by `limit`.
+  - `StorageStats`: counters (`active_reports`, `archived_reports`) are maintained incrementally (+/- 1) on every mutation instead of recounting maps.
+  - `migrate_reports_to_persistent`: admin-only paginated migration entrypoint `(caller: Address, limit: u32) -> Result<u32, ReportingError>`. Drains legacy instance maps into persistent entries and deletes instance keys upon completion.
+  - Read fallbacks: reads for active reports, archives, and viewer grants transparently fall back to legacy instance maps if not yet migrated.
+- **Breaking Changes**:
+  - `archive_old_reports` ABI changed from `(caller, before_timestamp)` to `(caller, user, before_timestamp, limit)`.
+  - `cleanup_old_reports` ABI changed from `(caller, before_timestamp)` to `(caller, user, before_timestamp, limit)`.
+  - `store_report` now returns `Result<bool, ReportingError>` (rejecting when active cap is reached).
+- **Migration Procedure**:
+  - Upgrade the contract WASM.
+  - Contract continues to serve reads seamlessly via fallback to legacy instance maps.
+  - Admin invokes `migrate_reports_to_persistent(admin, limit)` repeatedly (recommended batch limit `50` to `100`) until it returns `0`.
+  - Once migration completes, legacy instance keys `REPORTS`, `ARCH_RPT`, `ARCH_IDX`, and `VIEW_ACL` are completely deleted, freeing instance storage.
+- **Tests**:
+  - `test_store_report_cost_independent_of_other_users` (proves CPU instruction cost stays within <= 10% regardless of number of users).
+  - `test_store_report_enforces_per_user_cap` (verifies 121st active report fails with `TooManyActiveReports`).
+  - `test_archive_is_paginated_and_bounded` (verifies 250 reports archived across batches of 100/100/50).
+  - `test_migration_moves_legacy_data` (verifies legacy map migration and removal of legacy instance keys).
+  - `test_reads_fall_back_before_migration` (verifies fallback reads before migration).
+  - `test_storage_stats_stay_consistent` (verifies consistency after 200 random/deterministic operations).
+
 ### v0.2.0
 
 - **Summary**: Bounded legacy `get_archived_reports` to prevent host-budget reverts and promoted `get_archived_reports_page` as the supported archive reader (Issue #832).
@@ -132,3 +180,18 @@ This document tracks changes, versions, and migration notes for each of the smar
 - **Summary**: Initial release of the Reporting contract.
 - **Breaking Changes**: None.
 - **Migration Notes**: Baseline deployment.
+
+## Orchestrator (`orchestrator`)
+
+### v0.2.0
+
+- **Summary**: Integrated emergency killswitch checking prior to executing any remittance flow (Issue feat(orchestrator): honour the emergency_killswitch contract before executing any remittance flow).
+- **New Features**:
+  - `KillswitchInterface` contract client trait for querying `emergency_killswitch` status (`is_paused`, `is_module_paused`, `is_function_paused`).
+  - Owner-only `set_killswitch(caller, killswitch: Option<Address>)` entrypoint storing `KS_ADDR` (`symbol_short!("KS_ADDR")`) and publishing `("orch", "ks_set")`.
+  - Defence-in-depth pause enforcement across all flow entrypoints: `execute_remittance_flow` (`"flow"`), `execute_remittance_flow_signed` (`"flow_sig"`), `execute_flow_fanout` (`"fanout"`), and `claim_rewards_summary_external` (`"clm_rwd"`).
+  - Typed error `OrchestratorError::EmergencyPaused = 16`.
+  - Fails closed on cross-contract query errors or contract absence.
+- **Breaking Changes**: None at the ABI level; pause checking only takes effect when a killswitch address is explicitly configured.
+- **Migration Notes**: No storage migration required. Optional killswitch address can be configured by the orchestrator owner.
+

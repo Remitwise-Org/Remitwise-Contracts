@@ -731,6 +731,20 @@ impl FamilyWallet {
     ) -> bool {
         guard_cross_contract_read(&env, &orchestrator, epoch)
             .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        Self::spending_allowed(&env, &caller, amount)
+    }
+
+    /// Evaluates the spending rules for an address against an amount.
+    ///
+    /// Rules:
+    /// - Unknown address → false
+    /// - Negative amount → false
+    /// - Expired role → false
+    /// - Owner / Admin → true
+    /// - Viewer → false
+    /// - Member with `spending_limit == 0` → true
+    /// - Otherwise → `amount <= spending_limit`
+    fn spending_allowed(env: &Env, caller: &Address, amount: i128) -> bool {
         if amount < 0 {
             return false;
         }
@@ -741,30 +755,30 @@ impl FamilyWallet {
                 None => return false,
             };
 
-        let member = match members.get(caller) {
+        let member = match members.get(caller.clone()) {
             Some(m) => m,
             None => return false,
         };
 
         // Expired roles are treated as having no permissions.
-        if Self::role_has_expired(&env, &member.address) {
+        if Self::role_has_expired(env, &member.address) {
             return false;
         }
 
         // Viewer is read-only. Spending roles are explicit so a new role
         // cannot inherit spending permission from ordinal comparisons.
         match member.role {
-            FamilyRole::Owner | FamilyRole::Admin => return true,
-            FamilyRole::Member => {}
-            FamilyRole::Viewer => return false,
+            FamilyRole::Owner | FamilyRole::Admin => true,
+            FamilyRole::Viewer => false,
+            FamilyRole::Member => {
+                // 0 means unlimited for regular members too
+                if member.spending_limit == 0 {
+                    true
+                } else {
+                    amount <= member.spending_limit
+                }
+            }
         }
-
-        // 0 means unlimited for regular members too
-        if member.spending_limit == 0 {
-            return true;
-        }
-
-        amount <= member.spending_limit
     }
 
     pub fn validate_precision_spending(
@@ -776,7 +790,7 @@ impl FamilyWallet {
             return Err(Error::InvalidAmount);
         }
 
-        if !Self::check_spending_limit(env.clone(), caller.clone(), amount) {
+        if !Self::spending_allowed(&env, &caller, amount) {
             return Err(Error::Unauthorized);
         }
 
@@ -1155,7 +1169,7 @@ impl FamilyWallet {
             panic!("Amount must be positive");
         }
 
-        if !Self::check_spending_limit(env.clone(), proposer.clone(), amount) {
+        if !Self::spending_allowed(&env, &proposer, amount) {
             panic!("Spending limit exceeded");
         }
 

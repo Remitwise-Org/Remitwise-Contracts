@@ -108,16 +108,7 @@ mod availability_split {
 
     #[contractimpl]
     impl RemittanceSplitTrait for AvailabilitySplit {
-        fn get_split(env: &Env) -> Vec<u32> {
-            let mode: u32 = env
-                .storage()
-                .instance()
-                .get(&symbol_short!("MODE"))
-                .unwrap_or(MODE_FULL);
-            if mode == MODE_FAILING {
-                panic!("split unavailable");
-            }
-
+        fn get_split(env: &Env, _orchestrator: Address, _epoch: u64) -> Vec<u32> {
             let mut split = Vec::new(env);
             split.push_back(5000);
             split.push_back(3000);
@@ -126,7 +117,7 @@ mod availability_split {
             split
         }
 
-        fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
+        fn get_config(env: Env) -> Option<crate::SplitConfig> {
             let mode: u32 = env
                 .storage()
                 .instance()
@@ -135,13 +126,16 @@ mod availability_split {
             if mode == MODE_FAILING {
                 panic!("split unavailable");
             }
-
-            let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 5000 / 10_000);
-            amounts.push_back(total_amount * 3000 / 10_000);
-            amounts.push_back(total_amount * 1500 / 10_000);
-            amounts.push_back(total_amount * 500 / 10_000);
-            amounts
+            Some(crate::SplitConfig {
+                owner: Address::generate(&env),
+                spending_percent: 5000,
+                savings_percent: 3000,
+                bills_percent: 1500,
+                insurance_percent: 500,
+                timestamp: 0,
+                initialized: true,
+                usdc_contract: Address::generate(&env),
+            })
         }
     }
 }

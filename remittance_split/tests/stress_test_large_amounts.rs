@@ -6,8 +6,11 @@ use remittance_split::{RemittanceSplit, RemittanceSplitClient, MAX_SCHEDULES_PER
 use soroban_sdk::testutils::Address as AddressTrait;
 use soroban_sdk::{Address, Env};
 
-fn dummy_token(env: &Env) -> Address {
-    Address::generate(env)
+/// Register a real Stellar asset contract and return its address.
+/// Required because `initialize_split` validates the token via `try_symbol` etc.
+fn make_token(env: &Env) -> Address {
+    let admin = Address::generate(env);
+    env.register_stellar_asset_contract_v2(admin).address()
 }
 
 fn init(
@@ -19,8 +22,20 @@ fn init(
     b: u32,
     i: u32,
 ) {
-    let token = dummy_token(env);
+    let token = make_token(env);
     client.initialize_split(owner, &0, &token, &s, &g, &b, &i);
+}
+
+/// Set up a trusted orchestrator and return `(orchestrator, epoch)`.
+fn setup_orchestrator(
+    env: &Env,
+    client: &RemittanceSplitClient,
+    owner: &Address,
+) -> (Address, u64) {
+    let orchestrator = Address::generate(env);
+    client.set_trusted_orchestrator(owner, &orchestrator);
+    let epoch = client.get_cross_contract_epoch();
+    (orchestrator, epoch)
 }
 
 #[test]
@@ -31,7 +46,7 @@ fn test_calculate_split_with_large_amount() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let large_amount = i128::MAX / 200;
     let result = client.try_calculate_split(&large_amount);
@@ -50,7 +65,7 @@ fn test_calculate_split_near_max_safe_value() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let max_safe = i128::MAX / 100 - 1;
     let result = client.try_calculate_split(&max_safe);
@@ -106,7 +121,7 @@ fn test_get_split_allocations_with_large_amount() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let large_amount = i128::MAX / 200;
     let result = client.try_get_split_allocations(&large_amount);
@@ -125,7 +140,7 @@ fn test_multiple_splits_with_large_amounts() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let large_amount = i128::MAX / 300;
     for _ in 0..5 {
@@ -145,7 +160,7 @@ fn test_edge_case_i128_max_divided_by_100() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let edge_amount = i128::MAX / 100;
     let result = client.try_calculate_split(&edge_amount);
@@ -200,7 +215,7 @@ fn test_sequential_large_calculations() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     for amount in &[
         i128::MAX / 1000,
@@ -225,7 +240,7 @@ fn test_checked_arithmetic_prevents_silent_overflow() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     for amount in &[i128::MAX / 40, i128::MAX / 30, i128::MAX] {
         let result = client.try_calculate_split(amount);
@@ -262,7 +277,7 @@ fn test_schedule_id_sequencing_monotonicity() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let amount = 1000_i128;
     let next_due = env.ledger().timestamp() + 86400;
@@ -284,7 +299,7 @@ fn test_schedule_id_uniqueness_across_operations() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let amount = 1000_i128;
     let next_due = env.ledger().timestamp() + 86400;
@@ -328,7 +343,7 @@ fn test_high_volume_schedule_creation_no_collisions() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let amount = 1000_i128;
     let next_due = env.ledger().timestamp() + 86400;
@@ -361,7 +376,7 @@ fn test_schedule_pagination_ordering_guarantees() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let amount = 1000i128;
     let next_due = env.ledger().timestamp() + 86400; // 1 day from now
@@ -427,7 +442,7 @@ fn test_schedule_pagination_stable_cursors() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let amount = 1000i128;
     let next_due = env.ledger().timestamp() + 86400;
@@ -470,7 +485,7 @@ fn test_schedule_pagination_limit_clamping() {
     let owner = <Address as AddressTrait>::generate(&env);
     env.mock_all_auths();
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let amount = 1000i128;
     let next_due = env.ledger().timestamp() + 86400;

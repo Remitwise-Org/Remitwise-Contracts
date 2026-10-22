@@ -1409,6 +1409,65 @@ impl RemittanceSplit {
         true
     }
 
+    /// Private helper: return the configured split percentages, or the
+    /// `[5000, 3000, 1500, 500]` default for an uninitialised deployment.
+    ///
+    /// No epoch / orchestrator guard is applied here. This is the pure-read
+    /// core shared by both the guarded public `get_split` and the unguarded
+    /// internal paths (`compute_split`, `get_split_allocations`).
+    fn read_split_percentages(env: &Env) -> Vec<u32> {
+        env.storage()
+            .instance()
+            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
+            .map(|c| {
+                vec![
+                    env,
+                    c.spending_percent,
+                    c.savings_percent,
+                    c.bills_percent,
+                    c.insurance_percent,
+                ]
+            })
+            .unwrap_or_else(|| vec![env, 5000, 3000, 1500, 500])
+    }
+
+    /// Private helper: compute the four split amounts from storage (or defaults)
+    /// without any orchestrator / epoch guard.
+    ///
+    /// This is the arithmetic core shared by `calculate_split` (guarded public
+    /// entrypoint) and `get_split_allocations` (unguarded user-facing view).
+    fn compute_split(
+        env: &Env,
+        total_amount: i128,
+    ) -> Result<[i128; 4], RemittanceSplitError> {
+        if total_amount <= 0 {
+            return Err(RemittanceSplitError::InvalidAmount);
+        }
+        // Fast path: use the pre-validated config when available.
+        if let Some(config) = env
+            .storage()
+            .instance()
+            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
+        {
+            return Self::calculate_split_amounts(env, &config, total_amount, false);
+        }
+        // Uninitialized deployment: apply the hardcoded default percentages
+        // using the same checked-arithmetic remainder policy as the normal path.
+        let split = Self::read_split_percentages(env);
+        let spending_pct = split.get(0).ok_or(RemittanceSplitError::Overflow)?;
+        let savings_pct = split.get(1).ok_or(RemittanceSplitError::Overflow)?;
+        let bills_pct = split.get(2).ok_or(RemittanceSplitError::Overflow)?;
+        let (spending, savings, bills, insurance) =
+            fee_math::split_amounts(
+                total_amount,
+                spending_pct,
+                savings_pct,
+                bills_pct,
+            )
+            .ok_or(RemittanceSplitError::Overflow)?;
+        Ok([spending, savings, bills, insurance])
+    }
+
     /// Get the current split configuration
     ///
     /// # Returns
@@ -1426,19 +1485,7 @@ impl RemittanceSplit {
         // Derive split percentages from the canonical CONFIG key (single source of truth).
         // Previously percentages were written to a separate SPLIT key, duplicating the
         // same data and creating a desynchronisation risk.  See PR description for details.
-        env.storage()
-            .instance()
-            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
-            .map(|c| {
-                vec![
-                    &env,
-                    c.spending_percent,
-                    c.savings_percent,
-                    c.bills_percent,
-                    c.insurance_percent,
-                ]
-            })
-            .unwrap_or_else(|| vec![&env, 5000, 3000, 1500, 500])
+        Self::read_split_percentages(env)
     }
 
     pub fn get_config(env: Env) -> Option<SplitConfig> {
@@ -1622,29 +1669,10 @@ impl RemittanceSplit {
     ) -> Result<Vec<i128>, RemittanceSplitError> {
         guard_cross_contract_read(&env, &orchestrator, epoch)
             .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
-        if total_amount <= 0 {
-            return Err(RemittanceSplitError::InvalidAmount);
-        }
-
-        let allocations = if let Some(config) = env
-            .storage()
-            .instance()
-            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
-        {
-            Self::calculate_split_amounts(&env, &config, total_amount, false)?
-        } else {
-            // Preserve the read-only default preview for an uninitialized
-            // deployment while using the same checked remainder policy.
-            let split = Self::get_split(&env);
-            let spending = split.get(0).ok_or(RemittanceSplitError::Overflow)?;
-            let savings = split.get(1).ok_or(RemittanceSplitError::Overflow)?;
-            let bills = split.get(2).ok_or(RemittanceSplitError::Overflow)?;
-            let (spending, savings, bills, insurance) =
-                fee_math::split_amounts(total_amount, spending, savings, bills)
-                    .ok_or(RemittanceSplitError::Overflow)?;
-            [spending, savings, bills, insurance]
-        };
-        let [spending, savings, bills, insurance] = allocations;
+        // Delegate to the guard-free arithmetic helper so both the guarded
+        // public entrypoint and the unguarded get_split_allocations view share
+        // a single code path.
+        let [spending, savings, bills, insurance] = Self::compute_split(&env, total_amount)?;
 
         // Emit SplitCalculated event
 
@@ -2052,7 +2080,10 @@ impl RemittanceSplit {
         env: &Env,
         total_amount: i128,
     ) -> Result<Vec<Allocation>, RemittanceSplitError> {
-        let amounts = Self::calculate_split(env.clone(), total_amount)?;
+        // Use the guard-free compute_split so this user-facing view is callable
+        // without an orchestrator identity or a matching epoch.
+        let [spending, savings, bills, insurance] = Self::compute_split(env, total_amount)?;
+        let amounts = vec![env, spending, savings, bills, insurance];
         let categories = [
             symbol_short!("SPENDING"),
             symbol_short!("SAVINGS"),
@@ -2853,15 +2884,20 @@ mod tests {
     fn distribute_usdc_apportions_tokens_to_recipients() {
         let env = Env::default();
         env.mock_all_auths();
+        env.ledger().set_timestamp(1_000);
         let contract_id = env.register_contract(None, RemittanceSplit);
         let client = RemittanceSplitClient::new(&env, &contract_id);
 
+        let owner = Address::generate(&env);
         let admin = Address::generate(&env);
         let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
-        let payer = Address::generate(&env);
+        let token_addr = token_contract.address();
         let amount = 1_000i128;
 
-        StellarAssetClient::new(&env, &token_contract.address()).mint(&payer, &amount);
+        // Initialize split: 50/30/15/5 in basis points
+        client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+        StellarAssetClient::new(&env, &token_addr).mint(&owner, &amount);
 
         let spending = Address::generate(&env);
         let savings = Address::generate(&env);
@@ -2875,17 +2911,34 @@ mod tests {
             insurance: insurance.clone(),
         };
 
-        let distributed =
-            client.distribute_usdc(&token_contract.address(), &payer, &accounts, &amount);
+        let nonce = 1u64; // nonce 0 consumed by initialize_split
+        let deadline = env.ledger().timestamp() + 3600;
+        let request_hash = RemittanceSplit::compute_request_hash(
+            symbol_short!("distrib"),
+            owner.clone(),
+            nonce,
+            amount,
+            deadline,
+        );
+
+        let distributed = client.distribute_usdc(
+            &token_addr,
+            &owner,
+            &nonce,
+            &deadline,
+            &request_hash,
+            &accounts,
+            &amount,
+        );
 
         assert!(distributed);
 
-        let token_client = TokenClient::new(&env, &token_contract.address());
+        let token_client = TokenClient::new(&env, &token_addr);
         assert_eq!(token_client.balance(&spending), 500);
         assert_eq!(token_client.balance(&savings), 300);
         assert_eq!(token_client.balance(&bills), 150);
         assert_eq!(token_client.balance(&insurance), 50);
-        assert_eq!(token_client.balance(&payer), 0);
+        assert_eq!(token_client.balance(&owner), 0);
     }
 }
 

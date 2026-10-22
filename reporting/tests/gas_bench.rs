@@ -661,7 +661,7 @@ fn store_n_reports(
     insurance_id: &Address,
     remittance_id: &Address,
     family_dummy: &Address,
-) {
+) -> Address {
     // Re-configure with the provided addresses so we can generate real reports.
     // (They were already configured; this is a no-op if unchanged.)
     let _ = (
@@ -672,8 +672,8 @@ fn store_n_reports(
         family_dummy,
     );
 
+    let user = Address::generate(env);
     for i in 0u32..n {
-        let user = Address::generate(env);
         let period_key = PERIOD_START + (i as u64) * 3_600;
         let report = client.get_financial_health_report(
             &user,
@@ -685,8 +685,7 @@ fn store_n_reports(
         client.store_report(&user, &report, &period_key);
     }
 
-    // Advance ledger so that `generated_at` values fall before any cutoff.
-    let _ = admin;
+    user
 }
 
 /// Benchmark: archive 5 stored reports.
@@ -704,7 +703,7 @@ fn bench_archive_reports_5() {
         mock_insurance_5::MockInsurance5
     );
 
-    store_n_reports(
+    let user = store_n_reports(
         &env,
         &client,
         &admin,
@@ -718,7 +717,7 @@ fn bench_archive_reports_5() {
 
     // Use u64::MAX as cutoff to archive all stored reports.
     let (cpu, mem, archived_count) =
-        measure(&env, || client.archive_old_reports(&admin, &u64::MAX));
+        measure(&env, || client.archive_old_reports(&admin, &user, &u64::MAX, &5));
 
     assert_eq!(archived_count, 5);
 
@@ -742,7 +741,7 @@ fn bench_archive_reports_25() {
         mock_insurance_5::MockInsurance5
     );
 
-    store_n_reports(
+    let user = store_n_reports(
         &env,
         &client,
         &admin,
@@ -755,7 +754,7 @@ fn bench_archive_reports_25() {
     );
 
     let (cpu, mem, archived_count) =
-        measure(&env, || client.archive_old_reports(&admin, &u64::MAX));
+        measure(&env, || client.archive_old_reports(&admin, &user, &u64::MAX, &25));
 
     assert_eq!(archived_count, 25);
 
@@ -780,7 +779,7 @@ fn bench_archive_reports_50() {
         mock_insurance_5::MockInsurance5
     );
 
-    store_n_reports(
+    let user = store_n_reports(
         &env,
         &client,
         &admin,
@@ -793,7 +792,7 @@ fn bench_archive_reports_50() {
     );
 
     let (cpu, mem, archived_count) =
-        measure(&env, || client.archive_old_reports(&admin, &u64::MAX));
+        measure(&env, || client.archive_old_reports(&admin, &user, &u64::MAX, &50));
 
     assert_eq!(archived_count, 50);
 
@@ -826,7 +825,7 @@ fn bench_get_storage_stats_after_archive() {
         mock_insurance_5::MockInsurance5
     );
 
-    store_n_reports(
+    let user = store_n_reports(
         &env,
         &client,
         &admin,
@@ -839,7 +838,7 @@ fn bench_get_storage_stats_after_archive() {
     );
 
     // Archive all 25 reports to populate the archive map.
-    client.archive_old_reports(&admin, &u64::MAX);
+    client.archive_old_reports(&admin, &user, &u64::MAX, &25);
 
     let (cpu, mem, stats) = measure(&env, || client.get_storage_stats());
 

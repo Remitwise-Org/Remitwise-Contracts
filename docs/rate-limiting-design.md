@@ -189,7 +189,7 @@ count = 45  // Alice has created 45 bills today
 
 #### Fixed Day (Recommended for MVP)
 
-**Definition:** 24-hour windows aligned to UTC calendar (00:00-23:59).
+**Definition:** 24-hour windows aligned to UTC calendar (00:00-23:59), tracked per `(caller, operation)` key with in-place reset on rollover.
 
 **Advantages:**
 
@@ -208,7 +208,7 @@ count = 45  // Alice has created 45 bills today
 
 - O(1) lookup and update per operation
 - No vector storage of timestamps
-- Single storage key per (address, operation, day)
+- Single storage key per (address, operation); the record is reset in place when the window rolls over, so old windows never accumulate
 
 #### Sliding Window (Future Enhancement)
 
@@ -246,7 +246,7 @@ Maintainers and auditors prefer simplicity. Reserve sliding window for future op
 
 ### 5.1 Storage Layout
 
-Rate limit state is stored in contract instance storage using Soroban's `Map` type.
+Rate limit state is stored in **temporary** storage, one entry per `(caller, operation)` pair. Instance storage is not used for rate-limit records.
 
 #### Data Structure
 
@@ -254,11 +254,8 @@ Rate limit state is stored in contract instance storage using Soroban's `Map` ty
 #[contracttype]
 #[derive(Clone)]
 pub struct RateLimitRecord {
-    pub address: Address,
-    pub operation: Symbol,      // e.g., symbol_short!("crt_bill")
-    pub window_id: u32,         // Unix timestamp (rounded to window boundary)
     pub count: u32,             // Current count in this window
-    pub last_update: u64,       // Ledger timestamp of last increment
+    pub window_id: u64,         // Unix timestamp (rounded to window boundary)
 }
 ```
 

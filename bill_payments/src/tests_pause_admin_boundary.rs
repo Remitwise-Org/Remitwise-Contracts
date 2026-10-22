@@ -54,7 +54,7 @@ use remitwise_common::{activate_kill_switch, require_no_active_kill_switch};
 use soroban_sdk::{
     symbol_short,
     testutils::{EnvTestConfig, Events, Ledger},
-    Address, Env,
+    Address, Env, Symbol, TryFromVal,
 };
 use testutils::generate_test_address;
 
@@ -907,4 +907,84 @@ proptest! {
         prop_assert_eq!(client.get_pause_admin_public(), Some(admin.clone()));
         prop_assert_eq!(raw_grant_timestamp(&env, &contract_id), None);
     }
+}
+
+#[test]
+fn error_discriminants_are_unique() {
+    let actual = [
+        BillPaymentsError::BillNotFound as u32,
+        BillPaymentsError::BillAlreadyPaid as u32,
+        BillPaymentsError::InvalidAmount as u32,
+        BillPaymentsError::InvalidFrequency as u32,
+        BillPaymentsError::Unauthorized as u32,
+        BillPaymentsError::AdminNotInitialized as u32,
+        BillPaymentsError::AdminAlreadyInitialized as u32,
+        BillPaymentsError::NoPendingRotation as u32,
+        BillPaymentsError::TimelockNotElapsed as u32,
+        BillPaymentsError::EmptyPage as u32,
+        BillPaymentsError::InvalidCurrency as u32,
+        BillPaymentsError::UnsupportedCurrency as u32,
+        BillPaymentsError::InvalidExternalRef as u32,
+        BillPaymentsError::DuplicateExternalRef as u32,
+        BillPaymentsError::AdminGrantExpired as u32,
+        BillPaymentsError::ContractPaused as u32,
+        BillPaymentsError::FunctionPaused as u32,
+        BillPaymentsError::UnauthorizedPause as u32,
+        BillPaymentsError::SnapshotNotFound as u32,
+        BillPaymentsError::InvalidLimit as u32,
+        BillPaymentsError::SnapshotTooOld as u32,
+        BillPaymentsError::InvalidName as u32,
+        BillPaymentsError::InvalidDueDate as u32,
+        BillPaymentsError::ScheduleIntervalTooShort as u32,
+        BillPaymentsError::ScheduleLeadTimeTooLong as u32,
+        BillPaymentsError::ScheduleCapExceeded as u32,
+        BillPaymentsError::ScheduleNotFound as u32,
+        BillPaymentsError::ScheduleNotActive as u32,
+        BillPaymentsError::RateLimitExceeded as u32,
+        BillPaymentsError::SettlementWindowExpired as u32,
+        BillPaymentsError::OwnerBillCapExceeded as u32,
+        BillPaymentsError::InvalidTagContent as u32,
+        BillPaymentsError::BatchTooLarge as u32,
+        BillPaymentsError::SameAdmin as u32,
+        BillPaymentsError::RotationTimelockTooShort as u32,
+        BillPaymentsError::InvalidStateTransition as u32,
+        BillPaymentsError::AmountOverflow as u32,
+        BillPaymentsError::AmountExceedsMax as u32,
+        BillPaymentsError::ScheduleIntervalTooLong as u32,
+        BillPaymentsError::IdSpaceExhausted as u32,
+        BillPaymentsError::RequestKeyConflict as u32,
+        BillPaymentsError::InvariantViolation as u32,
+        BillPaymentsError::ScheduleRateLimitExceeded as u32,
+    ];
+    assert_eq!(actual, core::array::from_fn(|index| index as u32 + 1));
+    for (index, value) in actual.iter().enumerate() {
+        for other in actual.iter().skip(index + 1) {
+            assert_ne!(value, other);
+        }
+    }
+}
+
+#[test]
+fn unpause_function_emits_valid_event() {
+    let (env, _, client) = setup();
+    let admin = generate_test_address(&env);
+    let function = symbol_short!("pay_bill");
+    let unpaused_action = symbol_short!("fn_unpaus");
+
+    client.set_pause_admin(&admin, &admin);
+    client.pause_function(&admin, &function);
+    client.unpause_function(&admin, &function);
+
+    assert!(!client.is_function_paused_public(&function));
+    let mut found_event = false;
+    for (_contract_id, topics, _data) in env.events().all() {
+        if topics.len() >= 4 {
+            if let Ok(action) = Symbol::try_from_val(&env, &topics.get(3).unwrap()) {
+                if action == unpaused_action {
+                    found_event = true;
+                }
+            }
+        }
+    }
+    assert!(found_event, "unpause event action symbol was not emitted");
 }

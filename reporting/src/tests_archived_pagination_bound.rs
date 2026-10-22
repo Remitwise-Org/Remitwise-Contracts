@@ -44,28 +44,33 @@ use crate::{
 
 mod remittance_split_mock {
     use crate::RemittanceSplitTrait;
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
     #[contract]
     pub struct RemittanceSplit;
 
     #[contractimpl]
     impl RemittanceSplitTrait for RemittanceSplit {
-        fn get_split(env: &Env) -> Vec<u32> {
+        fn get_split(env: &Env, _orchestrator: Address, _epoch: u64) -> Vec<u32> {
             let mut split = Vec::new(env);
-            split.push_back(50);
-            split.push_back(30);
-            split.push_back(15);
-            split.push_back(5);
+            split.push_back(5000);
+            split.push_back(3000);
+            split.push_back(1500);
+            split.push_back(500);
             split
         }
-        fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
-            let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 50 / 100);
-            amounts.push_back(total_amount * 30 / 100);
-            amounts.push_back(total_amount * 15 / 100);
-            amounts.push_back(total_amount * 5 / 100);
-            amounts
+        fn get_config(env: Env) -> Option<crate::SplitConfig> {
+            Some(crate::SplitConfig {
+                owner: Address::generate(&env),
+                spending_percent: 5000,
+                savings_percent: 3000,
+                bills_percent: 1500,
+                insurance_percent: 500,
+                timestamp: 0,
+                initialized: true,
+                usdc_contract: Address::generate(&env),
+            })
         }
     }
 }
@@ -317,7 +322,14 @@ fn seed_n_archives(
         client.store_report(user, &report, &(202_400u64 + i as u64));
     }
 
-    let archived = client.archive_old_reports(admin, &u64::MAX);
+    let mut archived = 0u32;
+    while archived < n {
+        let chunk = client.archive_old_reports(admin, user, &u64::MAX, &n);
+        if chunk == 0 {
+            break;
+        }
+        archived += chunk;
+    }
     assert_eq!(
         archived, n,
         "seed: expected to archive {n} reports, got {archived}"

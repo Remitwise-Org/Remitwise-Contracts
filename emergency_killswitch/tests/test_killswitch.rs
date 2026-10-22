@@ -796,7 +796,7 @@ fn activate_function_scope_adds_function_to_paused_list_atomically() {
 fn activate_function_scope_limit_exceeded_leaves_no_partial_state() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, admin, s1, s2, epoch) = setup_with_two_signers(&env);
+    let (client, _admin, s1, s2, epoch) = setup_with_two_signers(&env);
     let approvals = soroban_sdk::vec![&env, s1.clone(), s2.clone()];
     let module = symbol_short!("bill");
 

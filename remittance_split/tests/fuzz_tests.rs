@@ -16,12 +16,14 @@ use remittance_split::{
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env};
 use std::collections::HashSet;
 
-/// Helper: register a dummy token address (no real token needed for pure math tests).
-fn dummy_token(env: &Env) -> Address {
-    Address::generate(env)
+/// Helper: register a Stellar asset contract and return its address.
+/// Required because `initialize_split` validates the token via `try_symbol` etc.
+fn make_token(env: &Env) -> Address {
+    let admin = Address::generate(env);
+    env.register_stellar_asset_contract_v2(admin).address()
 }
 
-/// Helper: initialize split with a dummy token address.
+/// Helper: initialize split with a real token. Percentages in basis points (sum = 10_000).
 fn init(
     client: &RemittanceSplitClient,
     env: &Env,
@@ -31,11 +33,11 @@ fn init(
     b: u32,
     i: u32,
 ) {
-    let token = dummy_token(env);
+    let token = make_token(env);
     client.initialize_split(owner, &0, &token, &s, &g, &b, &i);
 }
 
-/// Helper: try_initialize_split with a dummy token address.
+/// Helper: try_initialize_split with a real token. Percentages in basis points.
 fn xorshift64(mut state: u64) -> u64 {
     state ^= state << 13;
     state ^= state >> 7;
@@ -138,28 +140,43 @@ fn try_init(
     b: u32,
     i: u32,
 ) -> Result<bool, ()> {
-    let token = dummy_token(env);
+    let token = make_token(env);
     client
         .try_initialize_split(owner, &0, &token, &s, &g, &b, &i)
         .map(|r| r.unwrap())
         .map_err(|_| ())
 }
 
+/// Helper: set up a trusted orchestrator and return `(orchestrator, epoch)`.
+/// Must be called after `init` so that `set_trusted_orchestrator` can find
+/// the owner in the config.
+fn setup_orchestrator(
+    env: &Env,
+    client: &RemittanceSplitClient,
+    owner: &Address,
+) -> (Address, u64) {
+    let orchestrator = Address::generate(env);
+    client.set_trusted_orchestrator(owner, &orchestrator);
+    let epoch = client.get_cross_contract_epoch();
+    (orchestrator, epoch)
+}
+
 // ---------------------------------------------------------------------------
 
 #[test]
 fn fuzz_calculate_split_sum_preservation() {
-    let test_cases = vec![
-        (1000, 50, 30, 15, 5),
-        (1, 25, 25, 25, 25),
-        (999, 33, 33, 33, 1),
-        (i128::MAX / 100, 25, 25, 25, 25),
-        (12345678, 17, 19, 23, 41),
-        (100, 1, 1, 1, 97),
-        (999999, 10, 20, 30, 40),
-        (7, 40, 30, 20, 10),
-        (543210, 70, 10, 10, 10),
-        (1000000, 0, 0, 0, 100),
+    // Percentages are in basis points (must sum to 10_000).
+    let test_cases: Vec<(i128, u32, u32, u32, u32)> = vec![
+        (1000, 5000, 3000, 1500, 500),
+        (1, 2500, 2500, 2500, 2500),
+        (999, 3300, 3300, 3300, 100),
+        (i128::MAX / 10_000, 2500, 2500, 2500, 2500),
+        (12_345_678, 1700, 1900, 2300, 4100),
+        (100, 100, 100, 100, 9700),
+        (999_999, 1000, 2000, 3000, 4000),
+        (7, 4000, 3000, 2000, 1000),
+        (543_210, 7000, 1000, 1000, 1000),
+        (1_000_000, 0, 0, 0, 10_000),
     ];
 
     for (total_amount, sp, sg, sb, si) in test_cases {
@@ -173,15 +190,17 @@ fn fuzz_calculate_split_sum_preservation() {
             continue;
         }
 
-        if client.try_calculate_split(&total_amount).is_err() {
+        let (orch, epoch) = setup_orchestrator(&env, &client, &owner);
+
+        if client.try_calculate_split(&orch, &epoch, &total_amount).is_err() {
             continue;
         }
 
-        let amounts = client.calculate_split(&total_amount);
+        let amounts = client.calculate_split(&orch, &epoch, &total_amount);
         let sum: i128 = amounts.iter().sum();
         assert_eq!(
             sum, total_amount,
-            "Sum mismatch for percentages {}%/{}%/{}%/{}%",
+            "Sum mismatch for percentages {} bp/{} bp/{} bp/{} bp",
             sp, sg, sb, si
         );
         assert!(amounts.iter().all(|a| a >= 0), "Negative amount detected");
@@ -196,10 +215,11 @@ fn fuzz_calculate_split_small_amounts() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 25, 25, 25, 25);
+    init(&client, &env, &owner, 2500, 2500, 2500, 2500);
+    let (orch, epoch) = setup_orchestrator(&env, &client, &owner);
 
     for amount in 1..=100i128 {
-        let amounts = client.calculate_split(&amount);
+        let amounts = client.calculate_split(&orch, &epoch, &amount);
         let sum: i128 = amounts.iter().sum();
         assert_eq!(sum, amount, "Sum mismatch for amount {}", amount);
         assert!(amounts.iter().all(|a| a <= amount), "Amount exceeds total");
@@ -208,12 +228,13 @@ fn fuzz_calculate_split_small_amounts() {
 
 #[test]
 fn fuzz_rounding_behavior() {
-    let prime_percentages = vec![
-        (3u32, 7u32, 11u32, 79u32),
-        (13, 17, 23, 47),
-        (19, 23, 29, 29),
-        (31, 37, 11, 21),
-        (41, 43, 7, 9),
+    // Percentages in basis points (sum = 10_000).
+    let prime_percentages: Vec<(u32, u32, u32, u32)> = vec![
+        (300, 700, 1100, 7900),
+        (1300, 1700, 2300, 4700),
+        (1900, 2300, 2900, 2900),
+        (3100, 3700, 1100, 2100),
+        (4100, 4300, 700, 900),
     ];
 
     for (sp, sg, sb, si) in prime_percentages {
@@ -224,13 +245,14 @@ fn fuzz_rounding_behavior() {
         let owner = Address::generate(&env);
 
         init(&client, &env, &owner, sp, sg, sb, si);
+        let (orch, epoch) = setup_orchestrator(&env, &client, &owner);
 
-        for amount in &[100i128, 1000, 9999, 123456] {
-            let amounts = client.calculate_split(amount);
+        for amount in &[100i128, 1000, 9999, 123_456] {
+            let amounts = client.calculate_split(&orch, &epoch, amount);
             let sum: i128 = amounts.iter().sum();
             assert_eq!(
                 sum, *amount,
-                "Rounding error for amount {} with {}%/{}%/{}%/{}%",
+                "Rounding error for amount {} with {} bp/{} bp/{} bp/{} bp",
                 amount, sp, sg, sb, si
             );
         }
@@ -245,22 +267,24 @@ fn fuzz_invalid_amounts() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
+    let (orch, epoch) = setup_orchestrator(&env, &client, &owner);
 
     for amount in &[0i128, -1, -100, -1000, i128::MIN] {
-        let result = client.try_calculate_split(amount);
+        let result = client.try_calculate_split(&orch, &epoch, amount);
         assert!(result.is_err(), "Expected error for amount {}", amount);
     }
 }
 
 #[test]
 fn fuzz_invalid_percentages() {
-    let invalid_percentages = vec![
-        (50u32, 50u32, 10u32, 0u32),
-        (25, 25, 25, 24),
-        (100, 0, 0, 1),
-        (0, 0, 0, 0),
-        (30, 30, 30, 30),
+    // These tuples all have sums != 10_000 (basis points) and should be rejected.
+    let invalid_percentages: Vec<(u32, u32, u32, u32)> = vec![
+        (5000, 5000, 1000, 0),   // sum = 11000
+        (2500, 2500, 2500, 2400), // sum = 9900
+        (10000, 0, 0, 100),      // sum = 10100
+        (0, 0, 0, 0),            // sum = 0
+        (3000, 3000, 3000, 3000), // sum = 12000
     ];
 
     for (sp, sg, sb, si) in invalid_percentages {
@@ -272,10 +296,10 @@ fn fuzz_invalid_percentages() {
 
         let total = sp + sg + sb + si;
         let result = try_init(&client, &env, &owner, sp, sg, sb, si);
-        if total != 100 {
+        if total != 10_000 {
             assert!(
                 result.is_err(),
-                "Expected error for percentages summing to {}",
+                "Expected error for percentages summing to {} bp",
                 total
             );
         }
@@ -290,16 +314,17 @@ fn fuzz_large_amounts() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 25, 25, 25, 25);
+    init(&client, &env, &owner, 2500, 2500, 2500, 2500);
+    let (orch, epoch) = setup_orchestrator(&env, &client, &owner);
 
     for amount in &[
+        i128::MAX / 10_000,
         i128::MAX / 1000,
-        i128::MAX / 100,
         1_000_000_000_000i128,
         999_999_999_999i128,
     ] {
-        if client.try_calculate_split(amount).is_ok() {
-            let amounts = client.calculate_split(amount);
+        if client.try_calculate_split(&orch, &epoch, amount).is_ok() {
+            let amounts = client.calculate_split(&orch, &epoch, amount);
             let sum: i128 = amounts.iter().sum();
             assert_eq!(sum, *amount, "Sum mismatch for large amount {}", amount);
         }
@@ -308,11 +333,12 @@ fn fuzz_large_amounts() {
 
 #[test]
 fn fuzz_single_category_splits() {
-    let single_category_splits = vec![
-        (100u32, 0u32, 0u32, 0u32),
-        (0, 100, 0, 0),
-        (0, 0, 100, 0),
-        (0, 0, 0, 100),
+    // Percentages in basis points (sum = 10_000).
+    let single_category_splits: Vec<(u32, u32, u32, u32)> = vec![
+        (10_000, 0, 0, 0),
+        (0, 10_000, 0, 0),
+        (0, 0, 10_000, 0),
+        (0, 0, 0, 10_000),
     ];
 
     for (sp, sg, sb, si) in single_category_splits {
@@ -323,18 +349,19 @@ fn fuzz_single_category_splits() {
         let owner = Address::generate(&env);
 
         init(&client, &env, &owner, sp, sg, sb, si);
+        let (orch, epoch) = setup_orchestrator(&env, &client, &owner);
 
-        let amounts = client.calculate_split(&1000);
+        let amounts = client.calculate_split(&orch, &epoch, &1000);
         let sum: i128 = amounts.iter().sum();
         assert_eq!(sum, 1000);
 
-        if sp == 100 {
+        if sp == 10_000 {
             assert_eq!(amounts.get(0).unwrap(), 1000);
         }
-        if sg == 100 {
+        if sg == 10_000 {
             assert_eq!(amounts.get(1).unwrap(), 1000);
         }
-        if sb == 100 {
+        if sb == 10_000 {
             assert_eq!(amounts.get(2).unwrap(), 1000);
         }
     }
@@ -348,7 +375,7 @@ fn fuzz_schedule_create_modify_cancel_validations() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
     let current_time = env.ledger().timestamp();
     let schedule_count = client.get_remittance_schedules(&owner).len();
 
@@ -433,8 +460,8 @@ proptest! {
         let usdc_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
         let usdc_addr = usdc_contract.address();
 
-        // Initialize the contract
-        client.initialize_split(&owner, &0, &usdc_addr, &25, &25, &25, &25);
+        // Initialize the contract (percentages in basis points: 25/25/25/25 = 2500×4)
+        client.initialize_split(&owner, &0, &usdc_addr, &2500, &2500, &2500, &2500);
 
         // Mint tokens
         StellarAssetClient::new(&env, &usdc_addr).mint(&owner, &10_000_000i128);
@@ -661,7 +688,7 @@ fn fuzz_schedule_interval_boundary() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let current_time = env.ledger().timestamp();
     let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2; // safely in the future
@@ -705,7 +732,7 @@ fn fuzz_schedule_cancel_idempotency() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let current_time = env.ledger().timestamp();
     let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2;
@@ -767,7 +794,7 @@ fn fuzz_schedule_cap_exceeded() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let current_time = env.ledger().timestamp();
     let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2;
@@ -827,7 +854,7 @@ fn fuzz_schedule_one_off_created_and_marked_non_recurring() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let current_time = env.ledger().timestamp();
     let next_due = current_time + MIN_SCHEDULE_INTERVAL;
@@ -884,7 +911,7 @@ fn fuzz_schedule_no_storage_write_on_validation_failure() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let current_time = env.ledger().timestamp();
     let initial_count = client.get_remittance_schedules(&owner).len();
@@ -937,7 +964,7 @@ fn fuzz_schedule_modify_on_inactive_or_nonexistent() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    init(&client, &env, &owner, 50, 30, 15, 5);
+    init(&client, &env, &owner, 5000, 3000, 1500, 500);
 
     let current_time = env.ledger().timestamp();
     let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2;

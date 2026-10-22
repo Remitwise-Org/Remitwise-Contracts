@@ -375,8 +375,6 @@ pub enum BillPaymentsError {
     RotationTimelockTooShort = 35,
     /// State transition is not allowed.
     InvalidStateTransition = 36,
-    /// Invariant violation detected - bill data is inconsistent.
-    InvariantViolation = 36,
     /// Amount arithmetic (per-owner unpaid totals, batch deltas) would
     /// overflow `i128`. Rejected deterministically (panic → full revert)
     /// instead of silently saturating, so balances can never be truncated.
@@ -387,6 +385,13 @@ pub enum BillPaymentsError {
     ScheduleIntervalTooLong = 39,
     /// The `u32` bill/schedule id counter is exhausted (`u32::MAX`).
     IdSpaceExhausted = 40,
+    /// A request key was reused with a different request payload.
+    RequestKeyConflict = 41,
+    /// Invariant violation detected - bill data is inconsistent. Moved to a
+    /// unique discriminant to preserve all other established error codes.
+    InvariantViolation = 42,
+    /// Rate limit for bill schedule operations has been exceeded.
+    ScheduleRateLimitExceeded = 43,
 }
 
 pub type Error = BillPaymentsError;
@@ -1377,7 +1382,7 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(&env));
 
         // Set function to paused (idempotent - overwriting true with true is no-op)
-        m.set(func, true);
+        m.set(func.clone(), true);
 
         // Atomic storage update
         env.storage()
@@ -1412,7 +1417,7 @@ impl BillPayments {
     /// - Storage update is atomic (single set operation)
     ///
     /// # Events
-    /// Emits `fn_unpaused` event with the unpaused function symbol for audit trail.
+    /// Emits `fn_unpaus` event with the unpaused function symbol for audit trail.
     ///
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
@@ -1433,7 +1438,7 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(&env));
 
         // Set function to unpaused (idempotent - overwriting false with false is no-op)
-        m.set(func, false);
+        m.set(func.clone(), false);
 
         // Atomic storage update
         env.storage()
@@ -1445,7 +1450,7 @@ impl BillPayments {
             &env,
             EventCategory::System,
             EventPriority::High,
-            symbol_short!("fn_unpaused"),
+            symbol_short!("fn_unpaus"),
             func,
         );
 
@@ -1591,12 +1596,13 @@ impl BillPayments {
             Some(expires_at) => env.ledger().timestamp() >= expires_at,
             None => false,
         };
+        let usable = admin.is_some() && !expired;
         PauseAdminGrant {
             admin,
             granted_at,
             expires_at,
             expired,
-            usable: admin.is_some() && !expired,
+            usable,
         }
     }
 
@@ -1943,6 +1949,14 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<u32, BillPaymentsError> {
+        check_and_increment_rate_limit(
+            env,
+            &owner,
+            pause_functions::CREATE_BILL_SCHEDULE,
+            CREATE_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         // Validate schedule name length
         if name.is_empty() || name.len() > MAX_NAME_LEN {
             return Err(BillPaymentsError::InvalidName);
@@ -2056,6 +2070,14 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<bool, BillPaymentsError> {
+        check_and_increment_rate_limit(
+            env,
+            &caller,
+            pause_functions::MODIFY_BILL_SCHEDULE,
+            MODIFY_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         // Shared exact-integer amount rules (sign + magnitude), before any
         // state change. The previous `amount <= 0` guard did not bound the
         // magnitude; an oversized amount could threaten per-owner totals.
@@ -2141,7 +2163,7 @@ impl BillPayments {
             pause_functions::CANCEL_BILL_SCHEDULE,
             CANCEL_SCHEDULE_RATE_LIMIT,
         )
-        .map_err(|_| BillPaymentsError::RateLimitExceeded)?;
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
 
         Self::extend_instance_ttl(env);
 
@@ -2239,6 +2261,7 @@ impl BillPayments {
 
         let current_time = env.ledger().timestamp();
         let mut executed = Vec::new(env);
+        let mut bills_created_this_call: u32 = 0;
 
         let next_schedule_id = Self::get_next_bill_schedule_id(env);
 
@@ -2278,7 +2301,7 @@ impl BillPayments {
                 .unwrap_or_else(|| panic_with_error!(&env, BillPaymentsError::IdSpaceExhausted));
             schedules_checked += 1;
 
-            if schedules_checked > MAX_BATCH_SIZE as u32 {
+            if schedules_checked > MAX_SCHEDULES_CHECKED_PER_EXECUTION {
                 next_cursor = schedule_id; // Will resume from this ID on the next call
                 break;
             }
@@ -2365,7 +2388,9 @@ impl BillPayments {
 
                 let owner_bill_count = Self::get_owner_bills(&env, &schedule.owner).len();
 
-                if owner_bill_count < MAX_BILLS_PER_OWNER {
+                if owner_bill_count < MAX_BILLS_PER_OWNER
+                    && bills_created_this_call < MAX_BILLS_PER_SCHEDULE_EXECUTION
+                {
                     // Checked increment: at `u32::MAX` the next bill id is
                     // unrepresentable. The previous `saturating_add(1)` could
                     // silently reuse an existing bill id and overwrite a live
@@ -3582,11 +3607,11 @@ impl BillPayments {
         if bill.external_ref != validated_ext_ref {
             // Claim new ref first if provided
             if let Some(ref new_ref) = validated_ext_ref {
-                Self::claim_external_ref(env, &caller, new_ref, bill_id)?;
+                Self::claim_external_ref(&env, &caller, new_ref, bill_id)?;
             }
             // Release old ref only after new ref is successfully claimed
             if let Some(ref old_ref) = bill.external_ref {
-                Self::release_external_ref(env, &caller, old_ref);
+                Self::release_external_ref(&env, &caller, old_ref);
             }
         }
 
@@ -3944,7 +3969,7 @@ impl BillPayments {
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
 
-        let bills: Map<u32, Bill> = env
+        let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
@@ -4340,7 +4365,7 @@ impl BillPayments {
             // bill before any state change).
             use crate::state::{check_invariants, BillState};
             BillState::validate_transition(&bill, false, BillState::Paid, "batch_pay_bills")?;
-            check_invariants(env, &bill, false)?;
+            check_invariants(&env, &bill, false)?;
 
             // Reject settlement outside the allowed window (due date plus the
             // 30-day grace period): a stale obligation in the batch fails the
