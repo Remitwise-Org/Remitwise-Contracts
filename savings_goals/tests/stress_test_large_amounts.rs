@@ -78,7 +78,7 @@ fn test_add_to_goal_with_large_amount() {
     );
 
     env.mock_all_auths();
-    let new_total = client.add_to_goal(&owner, &goal_id, &large_contribution);
+    let new_total = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &large_contribution) };
 
     assert_eq!(new_total, large_contribution);
 
@@ -107,15 +107,15 @@ fn test_add_to_goal_multiple_large_contributions() {
 
     // Add multiple times safely
     env.mock_all_auths();
-    let total1 = client.add_to_goal(&owner, &goal_id, &contribution);
+    let total1 = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &contribution) };
     assert_eq!(total1, contribution);
 
     env.mock_all_auths();
-    let total2 = client.add_to_goal(&owner, &goal_id, &contribution);
+    let total2 = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &contribution) };
     assert_eq!(total2, contribution + contribution);
 
     env.mock_all_auths();
-    let total3 = client.add_to_goal(&owner, &goal_id, &contribution);
+    let total3 = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &contribution) };
     assert_eq!(total3, contribution + contribution + contribution);
 }
 #[test]
@@ -140,12 +140,12 @@ fn test_add_to_goal_overflow_returns_error() {
 
     // First addition should succeed at the safe cap boundary.
     env.mock_all_auths();
-    let first = client.add_to_goal(&owner, &goal_id, &safe_cap);
+    let first = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &safe_cap) };
     assert_eq!(first, safe_cap);
 
     // Second addition should return an overflow error rather than panic
     env.mock_all_auths();
-    let result = client.try_add_to_goal(&owner, &goal_id, &1);
+    let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1) };
     assert_eq!(result, Err(Ok(SavingsGoalError::Overflow)));
 }
 
@@ -206,7 +206,7 @@ fn test_batch_add_to_goals_duplicate_goal_ids_use_updated_balance() {
     );
 
     env.mock_all_auths();
-    let current = client.add_to_goal(&owner, &goal_id, &starting_balance);
+    let current = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &starting_balance) };
     assert_eq!(current, starting_balance);
 
     let mut contributions = Vec::new(&env);
@@ -314,7 +314,7 @@ fn test_withdraw_from_goal_with_large_amount() {
 
     // Add funds
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &large_amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &large_amount) };
 
     // Unlock to allow withdrawal
     env.mock_all_auths();
@@ -351,7 +351,7 @@ fn test_withdraw_from_goal_with_large_amount() {
 
 //     // Add funds
 //     env.mock_all_auths();
-//     client.add_to_goal(&owner, &goal_id, &large_amount);
+//     { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &large_amount) };
 
 //     // Unlock to allow withdrawal
 //     env.mock_all_auths();
@@ -384,7 +384,7 @@ fn test_goal_completion_with_large_amounts() {
 
     // Add exactly the target amount
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &large_target);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &large_target) };
 
     // Verify goal is completed
     let is_completed = client.is_goal_completed(&goal_id);
@@ -595,7 +595,7 @@ fn test_lock_unlock_with_large_amounts() {
 
     // Add funds (succeeds on unlocked goal)
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &large_amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &large_amount) };
 
     // Unlock (idempotent on already-unlocked)
     env.mock_all_auths();
@@ -639,7 +639,7 @@ fn test_sequential_large_operations() {
         );
 
         env.mock_all_auths();
-        client.add_to_goal(&owner, &goal_id, &(amount / 2));
+        { let orchestrator = soroban_sdk::Address::from_string(&String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &(amount / 2)) };
 
         let goal = client.get_goal(&goal_id).unwrap();
         assert_eq!(goal.current_amount, amount / 2);
@@ -672,7 +672,7 @@ fn test_time_lock_with_large_amounts() {
 
     // Add funds
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &large_amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &large_amount) };
 
     // Set time lock
     env.mock_all_auths();
@@ -687,8 +687,8 @@ fn test_time_lock_with_large_amounts() {
     let result = client.try_withdraw_from_goal(&owner, &goal_id, &1000);
     assert!(result.is_err());
 
-    // Advance time past the lock
-    set_time(&env, 2000001);
+    // At the exact unlock timestamp, the existing `< unlock_date` check allows withdrawal.
+    set_time(&env, 2000000);
 
     // Now withdrawal should succeed
     env.mock_all_auths();
@@ -717,7 +717,7 @@ fn test_export_import_snapshot_with_large_amounts() {
     );
 
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal1, &large_amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal1, &large_amount) };
 
     env.mock_all_auths();
     let goal2 = client.create_goal(
@@ -729,7 +729,7 @@ fn test_export_import_snapshot_with_large_amounts() {
     );
 
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal2, &large_amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal2, &large_amount) };
 
     // Export snapshot
     env.mock_all_auths();
@@ -768,7 +768,7 @@ fn test_add_to_goal_near_safe_cap_boundary() {
 
     // Add amount that brings us to exactly safe_cap
     env.mock_all_auths();
-    let first = client.add_to_goal(&owner, &goal_id, &safe_cap);
+    let first = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &safe_cap) };
     assert_eq!(first, safe_cap);
 
     // Verify goal is now at capacity
@@ -801,12 +801,12 @@ fn test_add_to_goal_just_over_safe_cap_returns_overflow() {
 
     // First add at safe boundary
     env.mock_all_auths();
-    let first = client.add_to_goal(&owner, &goal_id, &safe_cap);
+    let first = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &safe_cap) };
     assert_eq!(first, safe_cap);
 
     // Try to add just over boundary — must fail gracefully with Overflow
     env.mock_all_auths();
-    let result = client.try_add_to_goal(&owner, &goal_id, &beyond_cap);
+    let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &beyond_cap) };
     assert_eq!(result, Err(Ok(SavingsGoalError::Overflow)));
 }
 
@@ -832,7 +832,7 @@ fn test_withdraw_from_goal_near_underflow() {
 
     // Add small amount
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &small_amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &small_amount) };
 
     // Unlock for withdrawal
     env.mock_all_auths();
@@ -870,7 +870,7 @@ fn test_withdraw_from_goal_overflow_protection() {
 
     // Add funds
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &amount) };
 
     // Unlock
     env.mock_all_auths();
@@ -931,38 +931,38 @@ fn test_concurrent_near_boundary_operations_deterministic() {
 
     // Add amounts that deterministically reach exactly `safe_cap`.
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal1, &first_add);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal1, &first_add) };
 
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal2, &first_add);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal2, &first_add) };
 
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal3, &first_add);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal3, &first_add) };
 
     // Now add the remainder — should all succeed and land exactly at the cap.
     env.mock_all_auths();
-    let g1_total = client.add_to_goal(&owner, &goal1, &second_add);
+    let g1_total = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal1, &second_add) };
     assert_eq!(g1_total, safe_cap);
 
     env.mock_all_auths();
-    let g2_total = client.add_to_goal(&owner, &goal2, &second_add);
+    let g2_total = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal2, &second_add) };
     assert_eq!(g2_total, safe_cap);
 
     env.mock_all_auths();
-    let g3_total = client.add_to_goal(&owner, &goal3, &second_add);
+    let g3_total = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal3, &second_add) };
     assert_eq!(g3_total, safe_cap);
 
     // Try one more addition to each — all should fail with same error code
     env.mock_all_auths();
-    let r1 = client.try_add_to_goal(&owner, &goal1, &1);
+    let r1 = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal1, &1) };
     assert_eq!(r1, Err(Ok(SavingsGoalError::Overflow)));
 
     env.mock_all_auths();
-    let r2 = client.try_add_to_goal(&owner, &goal2, &1);
+    let r2 = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal2, &1) };
     assert_eq!(r2, Err(Ok(SavingsGoalError::Overflow)));
 
     env.mock_all_auths();
-    let r3 = client.try_add_to_goal(&owner, &goal3, &1);
+    let r3 = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal3, &1) };
     assert_eq!(r3, Err(Ok(SavingsGoalError::Overflow)));
 }
 
@@ -987,7 +987,7 @@ fn test_error_codes_stable_across_repeated_operations() {
 
     // Fill goal
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &1000);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1000) };
 
     // Unlock
     env.mock_all_auths();

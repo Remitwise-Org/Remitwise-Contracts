@@ -90,6 +90,29 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | `UPG_ADM`   | `Address`                      | Upgrade admin                                                |
 | `VERSION`   | `u32`                          | Contract version                                             |
 
+### Rate limiting (remitwise-common)
+
+`remitwise_common::check_and_increment_rate_limit` stores one record per
+`(caller, operation)` pair in **temporary** storage, keyed by the tuple
+`(RATE_LIM, caller, operation)`. The value is `RateLimitRecord { count, window_id }`.
+
+| Key                          | Scope     | Type               | Notes                                              |
+| ---------------------------- | --------- | ------------------ | -------------------------------------------------- |
+| `(RATE_LIM, Address, Symbol)`| temporary | `RateLimitRecord`  | One live record per caller/operation; reset in place on window rollover |
+
+- `RATE_LIMIT_WINDOW_SECONDS = 86400` (24 hours); `window_id = timestamp / 86400`.
+- When the stored `window_id` is older than the current window, the record is
+  reset in place (`count = 0`, `window_id` updated) instead of creating a new key.
+- TTL: each increment calls `extend_ttl` on the record to cover at least one
+  full window (`RATE_LIMIT_WINDOW_SECONDS` of ledgers), so abandoned callers
+  expire automatically and no unbounded history accumulates.
+- Legacy layout (removed): a single instance key `RATE_LIM` holding
+  `Map<(Address, Symbol, u64), RateLimitRecord>` keyed by `window_id`. This grew
+  by one entry per caller per operation per day and is no longer written.
+  Contracts upgrading from the legacy layout must call
+  `remitwise_common::migrate_legacy_rate_limits(env)` once during upgrade to
+  delete the stale `RATE_LIM` instance key.
+
 ### Keys and value types (persistent storage)
 
 | Key               | Type                 | Notes                                                     |
@@ -98,6 +121,7 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | `OwnerSchedules`  | `Vec<u32>`           | Per-owner index of schedule IDs, ordered by ID ascending  |
 
 ### TTL and IDs
+
 
 - **Instance TTL**: `CONFIG`, `SPLIT`, and other administrative keys are bumped on every access (read/write) using `INSTANCE_BUMP_AMOUNT` / `INSTANCE_LIFETIME_THRESHOLD`.
 - **Persistent TTL**: `RemittanceSchedule` and the `OwnerSchedules` index are bumped on every access using `PERSISTENT_BUMP_AMOUNT` / `PERSISTENT_LIFETIME_THRESHOLD`.
@@ -159,6 +183,9 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 - Uses both `extend_instance_ttl` and `extend_archive_ttl` (instance-scope TTL extension).
 - Bill IDs allocate from `NEXT_ID`.
 - Recurring bill creation in `pay_bill` and `batch_pay_bills` also consumes `NEXT_ID`.
+- Rate limiting uses the shared `remitwise-common` per-key temporary records
+  (see [Rate limiting](#rate-limiting-remitwise-common)); no rate-limit state is
+  stored in this contract's instance storage.
 
 ## insurance
 
@@ -313,6 +340,9 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
   - `savings_goals` (`AUDIT`)
   - `family_wallet` (`ACC_AUDIT`)
   - `orchestrator` (`AUDIT`, presently helper-gated)
+- Rate limiting state is per-caller/operation temporary records owned by
+  `remitwise-common`; the legacy `RATE_LIM` instance key is removed via
+  `migrate_legacy_rate_limits`.
 - Migration-oriented snapshot/export paths are explicit in:
   - `remittance_split` (`export_snapshot` / `import_snapshot`)
   - `savings_goals` (`GoalsExportSnapshot`, nonce-protected import/export)

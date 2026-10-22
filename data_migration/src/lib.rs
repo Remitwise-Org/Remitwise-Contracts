@@ -90,6 +90,8 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use base64::Engine;
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -798,7 +800,7 @@ impl std::fmt::Display for MigrationError {
 impl std::error::Error for MigrationError {}
 
 /// Lifecycle state for an observed migration attempt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum MigrationAttemptStatus {
     InProgress,
     Completed,
@@ -860,7 +862,7 @@ pub fn is_legal_transition(
 }
 
 /// Observable state for a single import attempt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct MigrationAttempt {
     pub checksum: String,
     pub version: u32,
@@ -869,6 +871,15 @@ pub struct MigrationAttempt {
     pub total_records: usize,
     pub processed_records: usize,
     pub status: MigrationAttemptStatus,
+}
+
+/// An immutable record of an imported snapshot identity, returned by
+/// [`MigrationTracker::imported_records`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportRecord {
+    pub checksum: String,
+    pub version: u32,
+    pub imported_at_ms: u64,
 }
 
 /// Tracks imported migration payloads to prevent replay attacks and duplicate restores.
@@ -886,16 +897,14 @@ pub struct MigrationAttempt {
 /// trackers still deserialize correctly into this representation, and trackers
 /// serialized now deserialize correctly into the previous representation, so
 /// this is *not* a persistence-breaking change.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MigrationTracker {
     imported_payloads: BTreeMap<(String, u32), u64>,
     /// Set to `true` after the operator explicitly calls `mark_completed`.
     /// [`verify_migration_completed`] checks this flag and returns
     /// [`MigrationError::MigrationNotCompleted`] until it is set.
     pub completed: bool,
-    #[serde(default)]
     active_attempt: Option<MigrationAttempt>,
-    #[serde(default)]
     attempt_history: Vec<MigrationAttempt>,
 }
 
@@ -1279,6 +1288,123 @@ impl MigrationTracker {
     }
 }
 
+impl Serialize for MigrationTracker {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("MigrationTracker", 4)?;
+        state.serialize_field("imported_payloads", &self.imported_payloads)?;
+        state.serialize_field("completed", &self.completed)?;
+        state.serialize_field("active_attempt", &self.active_attempt)?;
+        let mut sorted_history = self.attempt_history.clone();
+        sorted_history.sort();
+        state.serialize_field("attempt_history", &sorted_history)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for MigrationTracker {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct MigrationTrackerVisitor;
+
+        impl<'de> Visitor<'de> for MigrationTrackerVisitor {
+            type Value = MigrationTracker;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct MigrationTracker")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<MigrationTracker, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let imported_payloads = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let completed = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+
+                // Legacy layout compatibility: legacy serialized bytes contain only
+                // `imported_payloads` and `completed`. In non-self-describing formats
+                // like bincode, reading past the end of the legacy byte stream returns
+                // an EOF error. We treat missing tail fields as `None` and empty `Vec`.
+                let (active_attempt, attempt_history) =
+                    match seq.next_element::<Option<MigrationAttempt>>() {
+                        Ok(Some(active)) => {
+                            let history = match seq.next_element::<Vec<MigrationAttempt>>() {
+                                Ok(Some(h)) => h,
+                                Ok(None) | Err(_) => Vec::new(),
+                            };
+                            (active, history)
+                        }
+                        Ok(None) | Err(_) => (None, Vec::new()),
+                    };
+
+                Ok(MigrationTracker {
+                    imported_payloads,
+                    completed,
+                    active_attempt,
+                    attempt_history,
+                })
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<MigrationTracker, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut imported_payloads = None;
+                let mut completed = None;
+                let mut active_attempt = None;
+                let mut attempt_history = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "imported_payloads" => {
+                            imported_payloads = Some(map.next_value()?);
+                        }
+                        "completed" => {
+                            completed = Some(map.next_value()?);
+                        }
+                        "active_attempt" => {
+                            active_attempt = map.next_value()?;
+                        }
+                        "attempt_history" => {
+                            attempt_history = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let _ = map.next_value::<de::IgnoredAny>()?;
+                        }
+                    }
+                }
+
+                let imported_payloads = imported_payloads.unwrap_or_default();
+                let completed = completed.unwrap_or(false);
+                let attempt_history = attempt_history.unwrap_or_default();
+
+                Ok(MigrationTracker {
+                    imported_payloads,
+                    completed,
+                    active_attempt,
+                    attempt_history,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "imported_payloads",
+            "completed",
+            "active_attempt",
+            "attempt_history",
+        ];
+        deserializer.deserialize_struct("MigrationTracker", FIELDS, MigrationTrackerVisitor)
+    }
+}
+
 fn snapshot_identity(snapshot: &ExportSnapshot) -> (String, u32) {
     (snapshot.header.checksum.clone(), snapshot.header.version)
 }
@@ -1566,6 +1692,8 @@ impl SharedMigrationTracker {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
 /// Apply an imported snapshot atomically with caller-owned side effects.
 ///
 /// The callback receives staged state and tracker values. Changes become
@@ -1589,10 +1717,9 @@ where
 
     let previous_state = state.clone();
     let previous_tracker = tracker.clone();
-    let mut staged_state = previous_state.clone();
     let mut staged_tracker = previous_tracker.clone();
     staged_tracker.mark_imported(&snapshot, timestamp_ms)?;
-    staged_state = Some(snapshot);
+    let mut staged_state = Some(snapshot);
 
     match apply(&mut staged_state, &mut staged_tracker) {
         Ok(()) => {
@@ -6178,6 +6305,147 @@ mod tests {
         assert!(restored.is_completed());
     }
 
+    #[test]
+    fn tracker_with_attempt_history_round_trips_bincode() {
+        let mut tracker = MigrationTracker::new();
+
+        // 3 history entries on snap1 (simulating failed attempts followed by success):
+        let snap1 = generic_snapshot("roundtrip-history-1");
+        tracker.begin_import(&snap1, 1_000).unwrap();
+        tracker.fail_import(&snap1, 1_500).unwrap();
+
+        tracker.begin_import(&snap1, 2_000).unwrap();
+        tracker.fail_import(&snap1, 2_500).unwrap();
+
+        tracker.begin_import(&snap1, 3_000).unwrap();
+        tracker.mark_imported(&snap1, 3_500).unwrap();
+
+        // 1 active attempt on snap2:
+        let snap2 = generic_snapshot("roundtrip-history-2");
+        tracker.begin_import(&snap2, 4_000).unwrap();
+
+        assert_eq!(tracker.attempt_history().len(), 3);
+        assert!(tracker.active_attempt().is_some());
+
+        let bytes = bincode::serialize(&tracker).unwrap();
+        let restored: MigrationTracker = bincode::deserialize(&bytes).unwrap();
+
+        assert_eq!(restored, tracker);
+        assert_eq!(restored.attempt_history(), tracker.attempt_history());
+        assert_eq!(restored.active_attempt(), tracker.active_attempt());
+        assert_eq!(restored.imported_records(), tracker.imported_records());
+        assert_eq!(restored.is_completed(), tracker.is_completed());
+    }
+
+    #[test]
+    fn imported_records_lists_each_tracked_import_once() {
+        let snap1 = generic_snapshot("record-order-alpha");
+        let snap2 = generic_snapshot("record-order-beta");
+        let snap3 = generic_snapshot("record-order-gamma");
+
+        let bytes1 = export_to_json(&snap1).unwrap();
+        let bytes2 = export_to_json(&snap2).unwrap();
+        let bytes3 = export_to_json(&snap3).unwrap();
+
+        // Forward import order
+        let mut forward = MigrationTracker::new();
+        import_from_json(&bytes1, &mut forward, 1_000).unwrap();
+        import_from_json(&bytes2, &mut forward, 2_000).unwrap();
+        import_from_json(&bytes3, &mut forward, 3_000).unwrap();
+
+        let forward_records = forward.imported_records();
+        assert_eq!(forward_records.len(), 3);
+
+        // Reverse import order
+        let mut reverse = MigrationTracker::new();
+        import_from_json(&bytes3, &mut reverse, 3_000).unwrap();
+        import_from_json(&bytes2, &mut reverse, 2_000).unwrap();
+        import_from_json(&bytes1, &mut reverse, 1_000).unwrap();
+
+        let reverse_records = reverse.imported_records();
+        assert_eq!(reverse_records.len(), 3);
+
+        // Records must match regardless of import order
+        assert_eq!(forward_records, reverse_records);
+
+        // Sorted by (checksum, version)
+        let mut expected = vec![
+            (snap1.header.checksum.clone(), snap1.header.version),
+            (snap2.header.checksum.clone(), snap2.header.version),
+            (snap3.header.checksum.clone(), snap3.header.version),
+        ];
+        expected.sort();
+        let observed: Vec<(String, u32)> = forward_records
+            .iter()
+            .map(|r| (r.checksum.clone(), r.version))
+            .collect();
+        assert_eq!(observed, expected);
+    }
+
+    #[test]
+    fn duplicate_import_is_rejected_and_not_recorded_twice() {
+        let mut tracker = MigrationTracker::new();
+        let snapshot = generic_snapshot("dup-test-record");
+        let bytes = export_to_json(&snapshot).unwrap();
+
+        let res1 = import_from_json(&bytes, &mut tracker, 1_000);
+        assert!(res1.is_ok());
+        assert_eq!(tracker.imported_count(), 1);
+
+        let res2 = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(res2.unwrap_err(), MigrationError::DuplicateImport);
+        assert_eq!(tracker.imported_count(), 1);
+
+        let records = tracker.imported_records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].checksum, snapshot.header.checksum);
+        assert_eq!(records[0].version, snapshot.header.version);
+        assert_eq!(records[0].imported_at_ms, 1_000);
+    }
+
+    #[test]
+    fn shared_tracker_records_match_inner_tracker() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let shared = Arc::new(SharedMigrationTracker::new());
+        let barrier = Arc::new(Barrier::new(4));
+        let mut handles = Vec::with_capacity(4);
+
+        for t in 0..4 {
+            let tracker = Arc::clone(&shared);
+            let b = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                b.wait();
+                for i in 0..25 {
+                    let id = t * 25 + i;
+                    let snapshot = generic_snapshot(&format!("shared-distinct-{id}"));
+                    let bytes = export_to_json(&snapshot).unwrap();
+                    tracker
+                        .import_from_json(&bytes, (1_000 + id) as u64)
+                        .unwrap();
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let shared_records = shared.imported_records();
+        let inner_records = shared.snapshot().imported_records();
+
+        assert_eq!(shared_records.len(), 100);
+        assert_eq!(shared_records, inner_records);
+
+        // Verify all 100 distinct snapshot identities were recorded without duplicates
+        let mut unique_check = std::collections::BTreeSet::new();
+        for r in &shared_records {
+            assert!(unique_check.insert((r.checksum.clone(), r.version)));
+        }
+        assert_eq!(unique_check.len(), 100);
+    }
+
     // ==================== SHARED TRACKER (CONCURRENCY FACADE) ====================
 
     #[test]
@@ -6413,6 +6681,8 @@ mod tests {
             proptest::prop_assert_eq!(observed, model);
             proptest::prop_assert_eq!(shared.imported_count(), records.len());
         }
+    }
+
     // ====================================================================
     // STATE-TRANSITION INVARIANT TESTS
     //

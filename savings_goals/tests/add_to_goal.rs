@@ -39,7 +39,7 @@ fn test_add_to_goal_unauthorized_access() {
     let deposit_amount = 500i128;
 
     // We use 'try_add_to_goal' to catch the panic/error result
-    let result = client.try_add_to_goal(&owner_b, &goal_id, &deposit_amount);
+    let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner_b, &goal_id, &deposit_amount) };
 
     // 4. Assertion: Verify it failed
     assert!(

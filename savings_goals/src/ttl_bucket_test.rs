@@ -68,9 +68,11 @@ mod ttl_bucket_tests {
             remitwise_common::PERSISTENT_BUMP_AMOUNT
         );
         // And the two buckets must actually differ, or the distinction is dead.
-        assert!(
+        const {
+            assert!(
             remitwise_common::PERSISTENT_BUMP_AMOUNT > remitwise_common::INSTANCE_BUMP_AMOUNT,
             "persistent bump must exceed instance bump"
-        );
+            );
+        }
     }
 }

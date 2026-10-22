@@ -52,7 +52,7 @@ pub const MAX_ITEMS_PER_REPORT: u32 = remitwise_common::MAX_TOP_N;
 /// See `docs/HEALTH_SCORE.md` (at the repository root) for the full scoring
 /// model, inputs, and worked examples.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HealthScore {
     /// Overall score, clamped to `0..=100`.
     pub score: u32,
@@ -66,7 +66,7 @@ pub struct HealthScore {
 
 /// Category breakdown with amount and percentage
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CategoryBreakdown {
     pub category: Category,
     pub amount: i128,
@@ -75,7 +75,7 @@ pub struct CategoryBreakdown {
 
 /// Trend data comparing two periods
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrendData {
     pub current_amount: i128,
     pub previous_amount: i128,
@@ -97,7 +97,7 @@ pub enum DataAvailability {
 
 /// Remittance summary report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemittanceSummary {
     pub total_received: i128,
     pub total_allocated: i128,
@@ -109,7 +109,7 @@ pub struct RemittanceSummary {
 
 /// Savings progress report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SavingsReport {
     pub total_goals: u32,
     pub completed_goals: u32,
@@ -122,7 +122,7 @@ pub struct SavingsReport {
 
 /// Bill payment compliance report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BillComplianceReport {
     pub total_bills: u32,
     pub paid_bills: u32,
@@ -139,7 +139,7 @@ pub struct BillComplianceReport {
 
 /// Insurance coverage report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InsuranceReport {
     pub active_policies: u32,
     pub total_coverage: i128,
@@ -156,7 +156,7 @@ pub struct InsuranceReport {
 /// See `reporting/docs/FAMILY_SPENDING_REPORT.md` for the full schema and
 /// `DataAvailability` degradation rules.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FamilySpendingReport {
     pub member_breakdown: Vec<FamilyMemberSpending>,
     pub total_members: u32,
@@ -169,7 +169,7 @@ pub struct FamilySpendingReport {
 
 /// Per-member family spending breakdown entry.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FamilyMemberSpending {
     /// Family-wallet member address.
     pub member: Address,
@@ -184,7 +184,7 @@ pub struct FamilyMemberSpending {
 
 /// Overall financial health report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinancialHealthReport {
     pub health_score: HealthScore,
     pub remittance_summary: RemittanceSummary,
@@ -292,7 +292,7 @@ pub enum ReportScope {
 
 /// The subject and viewer identity recorded in an ACL event.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ViewerGrant {
     pub owner: Address,
     pub viewer: Address,
@@ -302,7 +302,7 @@ pub struct ViewerGrant {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReportEvent {
     ReportGenerated,
     ReportStored,
@@ -311,11 +311,12 @@ pub enum ReportEvent {
     ArchivesCleaned,
     ViewerGranted,
     ViewerRevoked,
+    ArchiveIndexRepaired,
 }
 
 /// Archived report - compressed summary
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArchivedReport {
     pub user: Address,
     pub period_key: u64,
@@ -326,7 +327,7 @@ pub struct ArchivedReport {
 
 /// Paginated result for archived reports
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArchivedPage {
     pub items: Vec<ArchivedReport>,
     pub next_cursor: u32,
@@ -335,7 +336,7 @@ pub struct ArchivedPage {
 
 /// Storage statistics for monitoring
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StorageStats {
     pub active_reports: u32,
     pub archived_reports: u32,
@@ -367,12 +368,30 @@ pub struct DependencyStatus {
     pub error_category: Option<soroban_sdk::String>,
 }
 
+/// Mirror of the real `remittance_split::SplitConfig`.
+///
+/// Field names, order and types MUST match `SplitConfig` in
+/// `remittance_split/src/lib.rs` exactly so the value returned by
+/// `get_config` decodes without a `ConversionError`.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SplitConfig {
+    pub owner: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
+    pub timestamp: u64,
+    pub initialized: bool,
+    pub usdc_contract: Address,
+}
+
 // Client traits for cross-contract calls
 
 #[contractclient(name = "RemittanceSplitClient")]
 pub trait RemittanceSplitTrait {
-    fn get_split(env: &Env) -> Vec<u32>;
-    fn calculate_split(env: Env, total_amount: i128) -> Vec<i128>;
+    fn get_split(env: &Env, orchestrator: Address, epoch: u64) -> Vec<u32>;
+    fn get_config(env: Env) -> Option<SplitConfig>;
 }
 
 #[contractclient(name = "SavingsGoalsClient")]
@@ -1059,7 +1078,7 @@ impl ReportingContract {
 
         // Check remittance_split
         let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
-        let split_ok = matches!(split_client.try_get_split(), Ok(Ok(_)));
+        let split_ok = matches!(split_client.try_get_config(), Ok(Ok(_)));
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "remittance_split"),
             ok: split_ok,
@@ -1181,8 +1200,15 @@ impl ReportingContract {
         let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);
         let mut availability = DataAvailability::Complete;
 
-        let split_percentages = match split_client.try_get_split() {
-            Ok(Ok(res)) => res,
+        let split_percentages = match split_client.try_get_config() {
+            Ok(Ok(Some(cfg))) => soroban_sdk::vec![
+                env,
+                cfg.spending_percent,
+                cfg.savings_percent,
+                cfg.bills_percent,
+                cfg.insurance_percent
+            ],
+            // `None` (split_not_configured) or any call/decode failure.
             _ => {
                 availability = DataAvailability::Partial;
                 Vec::new(env)
@@ -1203,7 +1229,10 @@ impl ReportingContract {
                 }
 
                 // Percentages are basis points; divide by 10_000 (100.00%).
-                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 10_000;
+                let amount = total_amount
+                    .checked_mul(p as i128)
+                    .ok_or(ReportingError::Overflow)?
+                    / 10_000;
                 split_amounts.push_back(amount);
             }
 
@@ -2151,6 +2180,11 @@ impl ReportingContract {
     /// Moves report data from the primary `REPORTS` storage to the `ARCH_RPT`
     /// storage, potentially reducing gas costs for active users.
     ///
+    /// Maintains set semantics on `ARCH_IDX`: each `period_key` appears at most
+    /// once per user. If a report for a period was previously archived and
+    /// re-stored, re-archiving overwrites the archive record in `ARCH_RPT` and
+    /// deduplicates insertion into `ARCH_IDX`, leaving the index unchanged.
+    ///
     /// # Arguments
     /// * `caller` - Address of the administrator (must authorize)
     /// * `before_timestamp` - Archive reports generated before this ledger timestamp
@@ -2216,8 +2250,10 @@ impl ReportingContract {
                 archived_count += 1;
 
                 let mut user_idx = arch_idx.get(user.clone()).unwrap_or_else(|| Vec::new(&env));
-                user_idx.push_back(period_key);
-                arch_idx.set(user, user_idx);
+                if !user_idx.contains(period_key) {
+                    user_idx.push_back(period_key);
+                    arch_idx.set(user, user_idx);
+                }
             }
         }
 
@@ -2437,6 +2473,11 @@ impl ReportingContract {
 
     /// Permanently delete old archives before specified timestamp (admin only).
     ///
+    /// Maintains set semantics on `ARCH_IDX`: removes all occurrences of the
+    /// deleted `period_key` from the user's archive index, healing any legacy
+    /// duplicate entries. When a user's index becomes empty, the user key is
+    /// removed from `ARCH_IDX`.
+    ///
     /// # Arguments
     /// * `caller` - Address of the administrator (must authorize)
     /// * `before_timestamp` - Delete archives created before this ledger timestamp
@@ -2486,17 +2527,16 @@ impl ReportingContract {
                 to_remove.push_back((user.clone(), period_key));
                 deleted_count += 1;
 
-                // Update index
+                // Update index: remove all occurrences of period_key to uphold set semantics
+                // and heal legacy duplicate entries in ARCH_IDX.
                 if let Some(mut user_idx) = arch_idx.get(user.clone()) {
-                    if let Some(idx) = user_idx.iter().position(|k| k == period_key) {
-                        let idx_u32 =
-                            u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
-                        user_idx.remove(idx_u32);
-                        if user_idx.is_empty() {
-                            arch_idx.remove(user);
-                        } else {
-                            arch_idx.set(user, user_idx);
-                        }
+                    while let Some(idx) = user_idx.first_index_of(period_key) {
+                        user_idx.remove(idx);
+                    }
+                    if user_idx.is_empty() {
+                        arch_idx.remove(user);
+                    } else {
+                        arch_idx.set(user, user_idx);
                     }
                 }
             }
@@ -2523,6 +2563,100 @@ impl ReportingContract {
         );
 
         Ok(deleted_count)
+    }
+
+    /// Rebuilds a single user's archive index (`ARCH_IDX`) from unique keys in
+    /// `ARCH_RPT` (admin only).
+    ///
+    /// Restores strict set semantics for deployments whose index became corrupted
+    /// with duplicate or orphaned period keys. The rebuilt index contains each
+    /// period key present in `ARCH_RPT` for the specified `user` exactly once,
+    /// sorted in ascending order. If no archived records exist for the user,
+    /// any existing index entry is removed from `ARCH_IDX`.
+    ///
+    /// # Arguments
+    /// * `caller` - Address of the administrator (must authorize)
+    /// * `user` - Address of the user whose index is being repaired
+    ///
+    /// # Returns
+    /// `Ok(u32)` containing the number of entries in the repaired index
+    ///
+    /// # Errors
+    /// * `NotInitialized` - If contract has not been initialized
+    /// * `Unauthorized` - If caller is not the admin
+    pub fn repair_archive_index(
+        env: Env,
+        caller: Address,
+        user: Address,
+    ) -> Result<u32, ReportingError> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .ok_or(ReportingError::NotInitialized)?;
+
+        if caller != admin {
+            return Err(ReportingError::Unauthorized);
+        }
+
+        Self::extend_instance_ttl(&env);
+        Self::extend_archive_ttl(&env);
+
+        let archived: Map<(Address, u64), ArchivedReport> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_RPT"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut arch_idx: Map<Address, Vec<u64>> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_IDX"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut new_idx: Vec<u64> = Vec::new(&env);
+        for ((addr, period_key), _) in archived.iter() {
+            if addr == user {
+                let mut exists = false;
+                let mut insert_pos = new_idx.len();
+                for i in 0..new_idx.len() {
+                    if let Some(existing) = new_idx.get(i) {
+                        if period_key == existing {
+                            exists = true;
+                            break;
+                        } else if period_key < existing {
+                            insert_pos = i;
+                            break;
+                        }
+                    }
+                }
+                if !exists {
+                    new_idx.insert(insert_pos, period_key);
+                }
+            }
+        }
+
+        let count = new_idx.len();
+        if new_idx.is_empty() {
+            arch_idx.remove(user.clone());
+        } else {
+            arch_idx.set(user.clone(), new_idx);
+        }
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("ARCH_IDX"), &arch_idx);
+
+        Self::update_storage_stats(&env);
+
+        env.events().publish(
+            (symbol_short!("report"), ReportEvent::ArchiveIndexRepaired),
+            (user, count, caller),
+        );
+
+        Ok(count)
     }
 
     /// Returns aggregate counts of active and archived reports for observability.
@@ -2614,3 +2748,6 @@ mod tests_safe_math;
 
 #[cfg(test)]
 mod tests_viewer_acl;
+
+#[cfg(test)]
+mod tests_archive_dedup;

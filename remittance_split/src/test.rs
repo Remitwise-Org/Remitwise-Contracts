@@ -77,11 +77,23 @@ fn sample_accounts(env: &Env) -> AccountGroup {
     }
 }
 
-fn split_expected(_env: &Env, client: &RemittanceSplitClient<'_>, total_amount: i128) -> [i128; 4] {
-    // RemittanceSplitClient's generated binding for `calculate_split` returns a
-    // `soroban_sdk::Vec<i128>` directly in this test harness.
-    let alloc = client.calculate_split(&total_amount);
+/// Register a real Stellar asset contract and return its address.
+/// Required for any call to `initialize_split` because the contract now
+/// validates the token via `try_symbol` / `try_name` / `try_decimals`.
+fn make_token(env: &Env) -> Address {
+    let admin = Address::generate(env);
+    env.register_stellar_asset_contract_v2(admin).address()
+}
 
+fn split_expected(env: &Env, client: &RemittanceSplitClient<'_>, total_amount: i128) -> [i128; 4] {
+    // Set up a trusted orchestrator so calculate_split's epoch guard passes.
+    let orchestrator = Address::generate(env);
+    // get_config gives us the owner needed by set_trusted_orchestrator.
+    let config = client.get_config().expect("contract must be initialized");
+    client.set_trusted_orchestrator(&config.owner, &orchestrator);
+    let epoch = client.get_cross_contract_epoch();
+
+    let alloc = client.calculate_split(&orchestrator, &epoch, &total_amount);
     [
         alloc.get(0).unwrap(),
         alloc.get(1).unwrap(),
@@ -246,8 +258,6 @@ fn test_distribution_event_topic_correctness() {
 #[test]
 fn test_distribute_usdc_conserves_balance_across_transfer() {
     let env = Env::default();
-    // Percentages are in basis points (must sum to exactly 10_000), not
-    // percent (0-100) — see `validate_percentages`.
     let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
@@ -324,8 +334,6 @@ fn test_distribute_usdc_conserves_balance_across_transfer() {
 #[test]
 fn test_distribute_usdc_rejected_call_leaves_balances_unchanged() {
     let env = Env::default();
-    // Percentages are in basis points (must sum to exactly 10_000), not
-    // percent (0-100) — see `validate_percentages`.
     let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
@@ -455,7 +463,7 @@ fn test_ttl_extensions() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let harness = setup_split(&env, 40, 30, 20, 10);
+    let harness = setup_split(&env, 4000, 3000, 2000, 1000);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1275,7 +1283,7 @@ fn test_corridor_below_min_deposit_is_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
     let minimum = client.min_deposit();
@@ -1352,7 +1360,7 @@ fn test_init_corridors_happy_path() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
@@ -1398,7 +1406,7 @@ fn test_init_corridors_unauthorized() {
 
     let owner = Address::generate(&env);
     let attacker = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
@@ -1417,7 +1425,7 @@ fn test_init_corridors_count_exceeded() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
@@ -1441,7 +1449,7 @@ fn test_init_corridors_fee_too_high() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
@@ -1460,7 +1468,11 @@ fn test_init_corridors_fee_too_high() {
 }
 
 #[test]
-fn test_init_corridors_fee_rounding() {
+fn test_init_corridors_fee_rounding_now_accepted() {
+    // Issue #1612 changed the fee pipeline to compute fees exactly in
+    // basis-point steps, so fractional-bps rates (e.g. 150 bps = 1.5%) are
+    // no longer rejected.  The `FeeRounding` error variant is retained for
+    // ABI stability but is never emitted.
     let env = Env::default();
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1469,22 +1481,24 @@ fn test_init_corridors_fee_rounding() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
-    let bad = Corridor {
+    let fractional_bps = Corridor {
         id: 1,
         source_currency: symbol_short!("USD"),
         dest_currency: symbol_short!("NGN"),
         min_amount: 100,
         max_amount: 1_000_000,
-        fee_bps: 150, // 1.5% which is a fractional percent
+        fee_bps: 150, // 1.5% — valid since exact bps math was introduced
     };
-    let corridors = vec![&env, bad];
+    let corridors = vec![&env, fractional_bps];
 
+    // 150 bps (1.5%) is ≤ MAX_FEE_BPS and the range is valid, so the call
+    // must now succeed.
     let result = client.try_init_corridors(&owner, &1, &corridors);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::FeeRounding)));
+    assert_eq!(result, Ok(Ok(())));
 }
 #[test]
 fn test_init_corridors_invalid_amount_range() {
@@ -1496,7 +1510,7 @@ fn test_init_corridors_invalid_amount_range() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
@@ -1527,7 +1541,7 @@ fn test_init_corridors_duplicate_id() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
@@ -1563,7 +1577,7 @@ fn test_init_corridors_replaces_previous() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
 
@@ -1610,7 +1624,7 @@ fn test_request_hash_hashed_path_rejects_untrusted_token_contract() {
 #[test]
 fn test_execute_due_remittance_schedules_basic() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1646,7 +1660,7 @@ fn test_execute_due_remittance_schedules_basic() {
 #[test]
 fn test_execute_recurring_remittance_schedule() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1683,7 +1697,7 @@ fn test_execute_recurring_remittance_schedule() {
 #[test]
 fn test_execute_missed_remittance_schedules() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1714,7 +1728,7 @@ fn test_execute_missed_remittance_schedules() {
 #[test]
 fn test_execute_idempotent_oneshot() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1754,7 +1768,7 @@ fn test_execute_idempotent_oneshot() {
 #[test]
 fn test_execute_idempotent_recurring() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1795,7 +1809,7 @@ fn test_execute_idempotent_recurring() {
 #[test]
 fn test_execute_skips_inactive_schedules() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1820,7 +1834,7 @@ fn test_execute_skips_inactive_schedules() {
 #[test]
 fn test_execute_skips_not_yet_due() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1851,7 +1865,7 @@ fn test_execute_skips_not_yet_due() {
 #[test]
 fn test_execute_exactly_equal_next_due() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1873,7 +1887,7 @@ fn test_execute_exactly_equal_next_due() {
 #[test]
 fn test_execute_empty_schedule_set() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1892,7 +1906,7 @@ fn test_execute_empty_schedule_set() {
 #[test]
 fn test_execute_all_inactive_set() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1922,7 +1936,7 @@ fn test_execute_all_inactive_set() {
 #[test]
 fn test_execute_paused_contract_returns_empty() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -1974,7 +1988,7 @@ fn test_execute_due_remittance_schedules_fanout_dust_conservation() {
 
     // Use one contract instance with a fixed split regime.
     // (Percentages are fixed per RemittanceSplit instance.)
-    let harness = setup_split(&env, 37, 33, 20, 10);
+    let harness = setup_split(&env, 3700, 3300, 2000, 1000);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -2130,7 +2144,7 @@ fn test_execute_due_remittance_schedules_fanout_dust_conservation() {
 #[test]
 fn test_execute_mixed_due_not_due() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -2417,7 +2431,7 @@ fn test_invalid_deadline_does_not_advance_nonce() {
 #[test]
 fn test_get_schedules_paginated_full_scale_cursor_monotonicity() {
     let env = Env::default();
-    let harness = setup_split(&env, 50, 30, 15, 5);
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
     let client = &harness.client;
     let owner = &harness.owner;
     let other_owner = Address::generate(&env);
@@ -2591,7 +2605,7 @@ fn test_get_split_allocations_single_100_percent_spending() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let harness = setup_split(&env, 100, 0, 0, 0);
+    let harness = setup_split(&env, 10000, 0, 0, 0);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -2622,7 +2636,7 @@ fn test_get_split_allocations_single_100_percent_insurance() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let harness = setup_split(&env, 0, 0, 0, 100);
+    let harness = setup_split(&env, 0, 0, 0, 10000);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -2682,7 +2696,7 @@ fn test_get_split_allocations_amount_one_conservation() {
     set_time(&env, 1_000);
 
     // 25/25/25/25: each floor = floor(1*25/100) = 0; insurance = 1 - 0 - 0 - 0 = 1
-    let harness = setup_split(&env, 25, 25, 25, 25);
+    let harness = setup_split(&env, 2500, 2500, 2500, 2500);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -2708,7 +2722,7 @@ fn test_get_split_allocations_ordering_is_deterministic() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let harness = setup_split(&env, 40, 30, 20, 10);
+    let harness = setup_split(&env, 4000, 3000, 2000, 1000);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -2743,27 +2757,39 @@ fn test_get_split_allocations_order_matches_get_split() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let harness = setup_split(&env, 40, 30, 20, 10);
+    let harness = setup_split(&env, 4000, 3000, 2000, 1000);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
 
     let total: i128 = 1_000;
-    let split = env.as_contract(&client.address, || RemittanceSplit::get_split(&env)); // [40, 30, 20, 10]
+    // Use get_config to read percentages without needing an orchestrator identity.
+    let config = env.as_contract(&client.address, || {
+        RemittanceSplit::get_config(env.clone())
+    }).expect("contract must be initialized after setup_split");
+    let split = vec![
+        &env,
+        config.spending_percent,
+        config.savings_percent,
+        config.bills_percent,
+        config.insurance_percent,
+    ];
     let allocs = env
         .as_contract(&client.address, || {
             RemittanceSplit::get_split_allocations(&env, total)
         })
         .expect("must succeed");
 
-    // Verify floor values for the first three categories
+    // Verify floor values for the first three categories.
+    // Percentages are in basis points (0–10_000), so the expected allocation
+    // is floor(total * pct / 10_000).
     for i in 0..3u32 {
         let pct = split.get(i).unwrap() as i128;
-        let expected = total * pct / 100;
+        let expected = total * pct / 10_000;
         assert_eq!(
             allocs.get(i).unwrap().amount,
             expected,
-            "allocation[{i}] must be floor(total * pct / 100)"
+            "allocation[{i}] must be floor(total * pct / 10_000)"
         );
     }
     // Insurance is remainder
@@ -2802,7 +2828,7 @@ fn test_get_split_allocations_large_amount_single_slot() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let harness = setup_split(&env, 100, 0, 0, 0);
+    let harness = setup_split(&env, 10000, 0, 0, 0);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -2830,7 +2856,7 @@ fn test_get_split_allocations_percentages_across_all_categories() {
     set_time(&env, 1_000);
 
     // 33/33/33/1 — non-round split that produces visible dust
-    let harness = setup_split(&env, 33, 33, 33, 1);
+    let harness = setup_split(&env, 3300, 3300, 3300, 100);
     let client = &harness.client;
     let _owner = &harness.owner;
     let _token_addr = &harness.token_addr;
@@ -3085,9 +3111,10 @@ fn test_update_split_percentage_out_of_range() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
-    let _result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
+    // Initialize with valid percentages so update_split can be called.
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
 
     // Try to update with spending_percent > 10_000
     let result = client.try_update_split(&owner, &1, &10_001, &0, &0, &0);
@@ -3105,7 +3132,7 @@ fn test_update_split_percentages_invalid_sum() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     // Initialize with valid percentages first (sum = 10_000)
     client.initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &1_000);
@@ -3129,7 +3156,7 @@ fn test_paused_since_and_pause_state() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_addr = make_token(&env);
 
     client.initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &1_000);
 
@@ -3427,4 +3454,130 @@ fn test_batch_transfer_rejects_replayed_nonce() {
         &amounts,
     );
     assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidNonce)));
+}
+
+// ===========================================================================
+// Issue #1863 — required acceptance-criteria tests
+// ===========================================================================
+
+/// AC-1: With no trusted orchestrator configured, get_split_allocations(10_000)
+/// returns the default split [SPENDING=5000, SAVINGS=3000, BILLS=1500, INSURANCE=500].
+#[test]
+fn get_split_allocations_works_without_orchestrator() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+
+    // Deliberately do NOT call initialize_split or set_trusted_orchestrator.
+    let allocs = env
+        .as_contract(&contract_id, || {
+            RemittanceSplit::get_split_allocations(&env, 10_000)
+        })
+        .expect("get_split_allocations must succeed without an orchestrator");
+
+    assert_eq!(allocs.len(), 4);
+    assert_eq!(allocs.get(0).unwrap().category, symbol_short!("SPENDING"));
+    assert_eq!(allocs.get(1).unwrap().category, symbol_short!("SAVINGS"));
+    assert_eq!(allocs.get(2).unwrap().category, symbol_short!("BILLS"));
+    assert_eq!(allocs.get(3).unwrap().category, symbol_short!("INSURANCE"));
+
+    // Default percentages: 5000/3000/1500/500 bp of 10_000 stroops.
+    assert_eq!(allocs.get(0).unwrap().amount, 5000, "SPENDING = 50% of 10_000");
+    assert_eq!(allocs.get(1).unwrap().amount, 3000, "SAVINGS = 30% of 10_000");
+    assert_eq!(allocs.get(2).unwrap().amount, 1500, "BILLS = 15% of 10_000");
+    assert_eq!(allocs.get(3).unwrap().amount, 500,  "INSURANCE = 5% of 10_000");
+
+    let sum: i128 = allocs.iter().map(|a| a.amount).sum();
+    assert_eq!(sum, 10_000, "amounts must sum to input");
+}
+
+/// AC-2: calculate_split rejects an untrusted orchestrator with Unauthorized,
+/// and rejects the trusted orchestrator + stale epoch with EpochMismatch.
+#[test]
+fn calculate_split_rejects_untrusted_orchestrator() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = make_token(&env);
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let trusted_orch = Address::generate(&env);
+    client.set_trusted_orchestrator(&owner, &trusted_orch);
+
+    let epoch = client.get_cross_contract_epoch(); // 0
+
+    // 1. Completely random / untrusted address must panic with Unauthorized.
+    let random = Address::generate(&env);
+    let result = client.try_calculate_split(&random, &epoch, &1_000i128);
+    assert!(
+        result.is_err(),
+        "calculate_split with untrusted address must panic (WASM host traps)"
+    );
+
+    // 2. Trusted address + stale epoch (epoch + 1) must panic with EpochMismatch.
+    let stale_epoch = epoch + 1;
+    let result2 = client.try_calculate_split(&trusted_orch, &stale_epoch, &1_000i128);
+    assert!(
+        result2.is_err(),
+        "calculate_split with stale epoch must panic (WASM host traps)"
+    );
+}
+
+/// AC-3: For amounts {1, 7, 9_999, 10_000, 123_456_789} with 40/30/20/10 config
+/// (basis points 4000/3000/2000/1000), calculate_split (guarded) and
+/// get_split_allocations (unguarded) return identical amounts, and each sums
+/// to the input.
+#[test]
+fn guarded_and_unguarded_paths_agree() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = make_token(&env);
+    // 40/30/20/10 in basis points (4000+3000+2000+1000 = 10_000)
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
+
+    // Set up a trusted orchestrator for the guarded path.
+    let orchestrator = Address::generate(&env);
+    client.set_trusted_orchestrator(&owner, &orchestrator);
+    let epoch = client.get_cross_contract_epoch();
+
+    let amounts: [i128; 5] = [1, 7, 9_999, 10_000, 123_456_789];
+
+    for total in amounts {
+        // Guarded path: calculate_split
+        let guarded = client.calculate_split(&orchestrator, &epoch, &total);
+
+        // Unguarded path: get_split_allocations (callable without orchestrator)
+        let unguarded = env
+            .as_contract(&contract_id, || {
+                RemittanceSplit::get_split_allocations(&env, total)
+            })
+            .expect("get_split_allocations must succeed");
+
+        assert_eq!(unguarded.len(), 4, "must return 4 allocations");
+        assert_eq!(guarded.len(), 4, "calculate_split must return 4 amounts");
+
+        for i in 0..4u32 {
+            assert_eq!(
+                guarded.get(i).unwrap(),
+                unguarded.get(i).unwrap().amount,
+                "guarded and unguarded must agree at index {i} for total={total}"
+            );
+        }
+
+        let guarded_sum: i128 = guarded.iter().sum();
+        assert_eq!(guarded_sum, total, "guarded amounts must sum to {total}");
+
+        let unguarded_sum: i128 = unguarded.iter().map(|a| a.amount).sum();
+        assert_eq!(unguarded_sum, total, "unguarded amounts must sum to {total}");
+    }
 }

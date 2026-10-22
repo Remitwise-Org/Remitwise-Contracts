@@ -41,8 +41,9 @@ fn report_event_variant_set_is_stable() {
         ReportEvent::ArchivesCleaned,
         ReportEvent::ViewerGranted,
         ReportEvent::ViewerRevoked,
+        ReportEvent::ArchiveIndexRepaired,
     ];
-    assert_eq!(variants.len(), 7, "ReportEvent variant count drifted");
+    assert_eq!(variants.len(), 8, "ReportEvent variant count drifted");
 
     for v in variants {
         // Each variant must serialize cleanly so the topic

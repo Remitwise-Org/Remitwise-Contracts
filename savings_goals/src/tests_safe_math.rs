@@ -70,7 +70,7 @@ fn checked_add_returns_new_total_on_valid_addition() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 1_000i128);
 
-    let new_total = client.add_to_goal(&owner, &goal_id, &500i128);
+    let new_total = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &500i128) };
 
     assert_eq!(new_total, 500i128);
     let goal = client.get_goal(&goal_id).unwrap();
@@ -83,13 +83,13 @@ fn checked_add_accumulates_correctly_across_sequential_additions() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 10_000i128);
 
-    let after_first = client.add_to_goal(&owner, &goal_id, &100i128);
+    let after_first = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &100i128) };
     assert_eq!(after_first, 100i128);
 
-    let after_second = client.add_to_goal(&owner, &goal_id, &200i128);
+    let after_second = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &200i128) };
     assert_eq!(after_second, 300i128);
 
-    let after_third = client.add_to_goal(&owner, &goal_id, &700i128);
+    let after_third = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &700i128) };
     assert_eq!(after_third, 1_000i128);
 }
 
@@ -100,7 +100,7 @@ fn checked_add_succeeds_at_max_safe_goal_balance_boundary() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, safe_cap);
 
-    let new_total = client.add_to_goal(&owner, &goal_id, &safe_cap);
+    let new_total = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &safe_cap) };
 
     assert_eq!(new_total, safe_cap);
 }
@@ -117,11 +117,11 @@ fn checked_add_returns_error_on_overflow() {
     let goal_id = make_goal(&env, &client, &owner, i128::MAX);
 
     // Fill up to safe_cap boundary.
-    let filled = client.add_to_goal(&owner, &goal_id, &safe_cap);
+    let filled = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &safe_cap) };
     assert_eq!(filled, safe_cap);
 
     // Any further addition must return Overflow, not panic.
-    let result = client.try_add_to_goal(&owner, &goal_id, &1i128);
+    let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1i128) };
     assert_eq!(
         result,
         Err(Ok(SavingsGoalError::Overflow)),
@@ -137,7 +137,7 @@ fn checked_add_returns_error_when_single_contribution_exceeds_safe_cap() {
 
     // i128::MAX / 2 + 1 is beyond the safe cap.
     let over_cap = MAX_SAFE_GOAL_BALANCE + 1;
-    let result = client.try_add_to_goal(&owner, &goal_id, &over_cap);
+    let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &over_cap) };
     assert_eq!(
         result,
         Err(Ok(SavingsGoalError::Overflow)),
@@ -151,10 +151,10 @@ fn checked_add_overflow_error_is_stable_across_repeated_attempts() {
     let (env, client, owner) = setup();
     let safe_cap = MAX_SAFE_GOAL_BALANCE;
     let goal_id = make_goal(&env, &client, &owner, i128::MAX);
-    client.add_to_goal(&owner, &goal_id, &safe_cap);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &safe_cap) };
 
     for _ in 0..3 {
-        let result = client.try_add_to_goal(&owner, &goal_id, &1i128);
+        let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1i128) };
         assert_eq!(
             result,
             Err(Ok(SavingsGoalError::Overflow)),
@@ -175,7 +175,7 @@ fn checked_add_returns_error_on_zero_amount() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 1_000i128);
 
-    let result = client.try_add_to_goal(&owner, &goal_id, &0i128);
+    let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &0i128) };
     assert_eq!(
         result,
         Err(Ok(SavingsGoalError::InvalidAmount)),
@@ -189,7 +189,7 @@ fn checked_add_returns_error_on_negative_amount() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 1_000i128);
 
-    let result = client.try_add_to_goal(&owner, &goal_id, &-1i128);
+    let result = { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.try_add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &-1i128) };
     assert_eq!(
         result,
         Err(Ok(SavingsGoalError::InvalidAmount)),
@@ -205,7 +205,7 @@ fn checked_sub_returns_remaining_balance_on_valid_withdrawal() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 1_000i128);
 
-    client.add_to_goal(&owner, &goal_id, &1_000i128);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1_000i128) };
     client.unlock_goal(&owner, &goal_id);
 
     let remaining = client.withdraw_from_goal(&owner, &goal_id, &400i128);
@@ -218,7 +218,7 @@ fn checked_sub_returns_zero_when_withdrawing_exact_balance() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 500i128);
 
-    client.add_to_goal(&owner, &goal_id, &500i128);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &500i128) };
     client.unlock_goal(&owner, &goal_id);
 
     let remaining = client.withdraw_from_goal(&owner, &goal_id, &500i128);
@@ -236,7 +236,7 @@ fn checked_sub_conserves_balance_for_large_amounts() {
     let large_amount = MAX_SAFE_GOAL_BALANCE;
     let goal_id = make_goal(&env, &client, &owner, large_amount);
 
-    client.add_to_goal(&owner, &goal_id, &large_amount);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &large_amount) };
     client.unlock_goal(&owner, &goal_id);
 
     let to_withdraw = large_amount / 4;
@@ -257,7 +257,7 @@ fn checked_sub_returns_error_on_underflow() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 100i128);
 
-    client.add_to_goal(&owner, &goal_id, &100i128);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &100i128) };
     client.unlock_goal(&owner, &goal_id);
 
     let result = client.try_withdraw_from_goal(&owner, &goal_id, &101i128);
@@ -291,7 +291,7 @@ fn checked_sub_returns_error_when_withdrawal_is_i128_max() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 1_000_000i128);
 
-    client.add_to_goal(&owner, &goal_id, &1i128);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &1i128) };
     client.unlock_goal(&owner, &goal_id);
 
     let result = client.try_withdraw_from_goal(&owner, &goal_id, &i128::MAX);
@@ -311,7 +311,7 @@ fn checked_sub_underflow_error_is_stable_across_repeated_attempts() {
     let (env, client, owner) = setup();
     let goal_id = make_goal(&env, &client, &owner, 50i128);
 
-    client.add_to_goal(&owner, &goal_id, &50i128);
+    { let orchestrator = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM")); client.set_trusted_orchestrator(&orchestrator, &orchestrator); client.add_to_goal(&orchestrator, &0u64, &owner, &goal_id, &50i128) };
     client.unlock_goal(&owner, &goal_id);
 
     for _ in 0..3 {
@@ -334,18 +334,43 @@ fn checked_sub_underflow_error_is_stable_across_repeated_attempts() {
 fn checked_add_is_deterministic_for_identical_sequences() {
     let (env1, client1, owner1) = setup();
     let goal1 = make_goal(&env1, &client1, &owner1, 10_000i128);
-    client1.add_to_goal(&owner1, &goal1, &1_000i128);
-    client1.add_to_goal(&owner1, &goal1, &2_000i128);
-    let total1 = client1.add_to_goal(&owner1, &goal1, &3_000i128);
+    let orchestrator1 = Address::from_string(&String::from_str(&env1, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"));
+    client1.set_trusted_orchestrator(&orchestrator1, &orchestrator1);
+    client1.add_to_goal(&orchestrator1, &0u64, &owner1, &goal1, &1_000i128);
+    client1.add_to_goal(&orchestrator1, &0u64, &owner1, &goal1, &2_000i128);
+    let total1 = client1.add_to_goal(&orchestrator1, &0u64, &owner1, &goal1, &3_000i128);
 
     let (env2, client2, owner2) = setup();
     let goal2 = make_goal(&env2, &client2, &owner2, 10_000i128);
-    client2.add_to_goal(&owner2, &goal2, &1_000i128);
-    client2.add_to_goal(&owner2, &goal2, &2_000i128);
-    let total2 = client2.add_to_goal(&owner2, &goal2, &3_000i128);
+    let orchestrator2 = Address::from_string(&String::from_str(&env2, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"));
+    client2.set_trusted_orchestrator(&orchestrator2, &orchestrator2);
+    client2.add_to_goal(&orchestrator2, &0u64, &owner2, &goal2, &1_000i128);
+    client2.add_to_goal(&orchestrator2, &0u64, &owner2, &goal2, &2_000i128);
+    let total2 = client2.add_to_goal(&orchestrator2, &0u64, &owner2, &goal2, &3_000i128);
 
     assert_eq!(
         total1, total2,
         "identical addition sequences must produce identical totals"
     );
+}
+
+#[test]
+fn withdraw_unknown_goal_returns_goal_not_found() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let owner = Address::generate(&env);
+    let result = env.as_contract(&contract_id, || {
+        SavingsGoalContract::withdraw_from_goal(env.clone(), owner.clone(), 999, 1)
+    });
+
+    assert_eq!(result, Err(SavingsGoalError::GoalNotFound));
+    let audit = env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .get::<_, Vec<AuditEntry>>(&DataKey::Audit)
+            .unwrap()
+    });
+    assert_eq!(audit.len(), 1);
+    assert!(!audit.get(0).unwrap().success);
 }

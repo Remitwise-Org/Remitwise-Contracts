@@ -47,6 +47,60 @@ pub struct FailingMock;
 #[contractimpl]
 impl FailingMock {}
 
+mod epoch_bump_mock {
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
+
+    #[contract]
+    pub struct Contract;
+
+    #[contractimpl]
+    impl Contract {
+        pub fn configure(env: Env, reject_bump: bool, report_wrong_epoch: bool) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("REJECT"), &reject_bump);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("WRONG"), &report_wrong_epoch);
+        }
+
+        pub fn bump_cross_contract_epoch(env: Env, _orchestrator: Address) {
+            let reject: bool = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("REJECT"))
+                .unwrap_or(false);
+            if reject {
+                panic!("downstream rejected epoch bump");
+            }
+            let key = symbol_short!("EPOCH");
+            let epoch: u64 = env.storage().instance().get(&key).unwrap_or(0);
+            env.storage().instance().set(&key, &(epoch + 1));
+        }
+
+        pub fn get_cross_contract_epoch(env: Env) -> u64 {
+            let epoch: u64 = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("EPOCH"))
+                .unwrap_or(0);
+            let report_wrong: bool = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("WRONG"))
+                .unwrap_or(false);
+            epoch + if report_wrong { 2 } else { 0 }
+        }
+
+        pub fn get_stored_epoch(env: Env) -> u64 {
+            env.storage()
+                .instance()
+                .get(&symbol_short!("EPOCH"))
+                .unwrap_or(0)
+        }
+    }
+}
+
 // Each failing mock needs its own module to avoid Soroban macro name
 // collisions (the macro generates __fn_name helper modules).
 mod mock_fail_savings {
@@ -173,25 +227,43 @@ fn init_orchestrator(env: &Env, client: &OrchestratorClient, owner: &Address) {
     client.init(owner, &fw, &rs, &sg, &bp, &ins);
 }
 
+fn flow_params_stored(
+    env: &Env,
+    client: &OrchestratorClient,
+    caller: &Address,
+    amount: i128,
+) -> RemittanceFlowParams {
+    let (fw, rs, sg, bp, ins) = env.as_contract(&client.address, || {
+        (
+            env.storage().instance().get(&symbol_short!("FW_ADDR")).unwrap(),
+            env.storage().instance().get(&symbol_short!("RS_ADDR")).unwrap(),
+            env.storage().instance().get(&symbol_short!("SG_ADDR")).unwrap(),
+            env.storage().instance().get(&symbol_short!("BP_ADDR")).unwrap(),
+            env.storage().instance().get(&symbol_short!("INS_ADDR")).unwrap(),
+        )
+    });
+    RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: amount,
+        family_wallet: fw,
+        remittance_split: rs,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    }
+}
+
 /// Execute one unsigned remittance flow entry so the audit log grows by one.
 ///
 /// Uses the unsigned execution path, which emits lifecycle events and updates
 /// `ExecutionStats` identically to the signed path.
 fn do_flow(env: &Env, client: &OrchestratorClient, executor: &Address, _nonce: u64) {
-    let mock_id = env.register_contract(None, MockContract);
     env.budget().reset_unlimited();
-    client.execute_remittance_flow(&RemittanceFlowParams {
-        caller: executor.clone(),
-        total_amount: 1000i128,
-        family_wallet: mock_id.clone(),
-        remittance_split: mock_id.clone(),
-        savings: mock_id.clone(),
-        bills: mock_id.clone(),
-        insurance: mock_id.clone(),
-        goal_id: 1,
-        bill_id: 1,
-        policy_id: 1,
-    });
+    let params = flow_params_stored(env, client, executor, 1000);
+    client.execute_remittance_flow(&params);
 }
 
 /// Mirror of `Orchestrator::compute_request_hash` for test use.
@@ -262,24 +334,14 @@ fn test_execute_flow_success() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    init_orchestrator(&env, &client, &owner);
 
-    let mock_id = env.register_contract(None, MockContract);
     let caller = Address::generate(&env);
+    let params = flow_params_stored(&env, &client, &caller, 10000);
 
-    client.execute_remittance_flow(&RemittanceFlowParams {
-        caller: caller.clone(),
-        total_amount: 10000i128,
-        family_wallet: mock_id.clone(),
-        remittance_split: mock_id.clone(),
-        savings: mock_id.clone(),
-        bills: mock_id.clone(),
-        insurance: mock_id.clone(),
-        goal_id: 1,
-        bill_id: 1,
-        policy_id: 1,
-    });
+    client.execute_remittance_flow(&params);
 
     // Check lock is released
     assert!(!client.get_execution_state());
@@ -357,31 +419,32 @@ fn test_lock_recovery_after_failure() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
-
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, MockContract);
     let failing_id = env.register_contract(None, FailingMock);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &rs, &failing_id, &bp, &ins);
+
     let caller = Address::generate(&env);
 
     // A panic in Soroban rolls back everything, including the lock.
     let result = client.try_execute_remittance_flow(&RemittanceFlowParams {
         caller: caller.clone(),
         total_amount: 1000i128,
-        family_wallet: failing_id.clone(),
-        remittance_split: failing_id.clone(),
-        savings: failing_id.clone(),
-        bills: failing_id.clone(),
-        insurance: failing_id.clone(),
+        family_wallet: fw,
+        remittance_split: rs,
+        savings: failing_id,
+        bills: bp,
+        insurance: ins,
         goal_id: 1,
         bill_id: 1,
         policy_id: 1,
     });
 
     assert!(result.is_err());
-    // In Soroban, if the transaction panics, the state is rolled back.
-    // In a test, if we use `try_`, it might behave differently depending on where the panic happens.
-    // But since `perform_remittance_flow` is called within the orchestrator, a panic there
-    // will roll back the `EXEC_LOCK` set by the orchestrator.
     assert!(!client.get_execution_state());
 }
 
@@ -1420,20 +1483,25 @@ fn test_unsigned_rollback_bill_failure_returns_rolled_back() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, MockContract);
+    let sg = env.register_contract(None, MockContract);
+    let mock_bill_fail = env.register_contract(None, mock_unsigned_fail_bill::Contract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &rs, &sg, &mock_bill_fail, &ins);
 
-    let mock_id = env.register_contract(None, mock_unsigned_fail_bill::Contract);
     let caller = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow(&RemittanceFlowParams {
         caller: caller.clone(),
         total_amount: 10000i128,
-        family_wallet: mock_id.clone(),
-        remittance_split: mock_id.clone(),
-        savings: mock_id.clone(),
-        bills: mock_id.clone(),
-        insurance: mock_id.clone(),
+        family_wallet: fw,
+        remittance_split: rs,
+        savings: sg,
+        bills: mock_bill_fail,
+        insurance: ins,
         goal_id: 1,
         bill_id: 1,
         policy_id: 1,
@@ -1458,20 +1526,25 @@ fn test_unsigned_rollback_insurance_failure_returns_rolled_back() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, MockContract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let mock_ins_fail = env.register_contract(None, mock_unsigned_fail_insurance::Contract);
+    client.init(&owner, &fw, &rs, &sg, &bp, &mock_ins_fail);
 
-    let mock_id = env.register_contract(None, mock_unsigned_fail_insurance::Contract);
     let caller = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow(&RemittanceFlowParams {
         caller: caller.clone(),
         total_amount: 10000i128,
-        family_wallet: mock_id.clone(),
-        remittance_split: mock_id.clone(),
-        savings: mock_id.clone(),
-        bills: mock_id.clone(),
-        insurance: mock_id.clone(),
+        family_wallet: fw,
+        remittance_split: rs,
+        savings: sg,
+        bills: bp,
+        insurance: mock_ins_fail,
         goal_id: 1,
         bill_id: 1,
         policy_id: 1,
@@ -1496,20 +1569,25 @@ fn test_unsigned_rollback_first_step_fails_no_compensation() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, MockContract);
+    let mock_sg_fail = env.register_contract(None, mock_fail_savings::Contract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &rs, &mock_sg_fail, &bp, &ins);
 
-    let mock_id = env.register_contract(None, mock_fail_savings::Contract);
     let caller = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow(&RemittanceFlowParams {
         caller: caller.clone(),
         total_amount: 10000i128,
-        family_wallet: mock_id.clone(),
-        remittance_split: mock_id.clone(),
-        savings: mock_id.clone(),
-        bills: mock_id.clone(),
-        insurance: mock_id.clone(),
+        family_wallet: fw,
+        remittance_split: rs,
+        savings: mock_sg_fail,
+        bills: bp,
+        insurance: ins,
         goal_id: 1,
         bill_id: 1,
         policy_id: 1,
@@ -1630,17 +1708,18 @@ fn test_flow_event_emitted_on_start() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
-    let mock_id = env.register_contract(None, MockContract);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    init_orchestrator(&env, &client, &owner);
     let caller = Address::generate(&env);
+    let params = flow_params_stored(&env, &client, &caller, 1000);
 
     assert_eq!(
         count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")),
         0
     );
 
-    client.execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 1000));
+    client.execute_remittance_flow(&params);
 
     assert_eq!(
         count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")),
@@ -1653,12 +1732,13 @@ fn test_flow_ok_event_emitted_on_success() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
-    let mock_id = env.register_contract(None, MockContract);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    init_orchestrator(&env, &client, &owner);
     let caller = Address::generate(&env);
+    let params = flow_params_stored(&env, &client, &caller, 1000);
 
-    client.execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 1000));
+    client.execute_remittance_flow(&params);
 
     assert_eq!(
         count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow_ok")),
@@ -1681,12 +1761,30 @@ fn test_flow_fail_event_emitted_on_failure() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
     let deny_id = env.register_contract(None, mock_no_limit::Contract);
-    let caller = Address::generate(&env);
+    let rs = env.register_contract(None, MockContract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &deny_id, &rs, &sg, &bp, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &deny_id, 1000));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 1000,
+        family_wallet: deny_id,
+        remittance_split: rs,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
 
     assert_eq!(
@@ -1734,12 +1832,13 @@ fn test_flow_lifecycle_events_order() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
-    let mock_id = env.register_contract(None, MockContract);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    init_orchestrator(&env, &client, &owner);
     let caller = Address::generate(&env);
+    let params = flow_params_stored(&env, &client, &caller, 1000);
 
-    client.execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 1000));
+    client.execute_remittance_flow(&params);
 
     let flow_topic = remitwise_topic(&env, symbol_short!("flow"));
     let ok_topic = remitwise_topic(&env, symbol_short!("flow_ok"));
@@ -1765,14 +1864,32 @@ fn test_flow_fail_does_not_leak_sensitive_amount() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
     let deny_id = env.register_contract(None, mock_no_limit::Contract);
+    let rs = env.register_contract(None, MockContract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &deny_id, &rs, &sg, &bp, &ins);
+
     let caller = Address::generate(&env);
     let sensitive_amount = 999_999i128;
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: sensitive_amount,
+        family_wallet: deny_id,
+        remittance_split: rs,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
 
     let _ =
-        client.try_execute_remittance_flow(&flow_params(&env, &caller, &deny_id, sensitive_amount));
+        client.try_execute_remittance_flow(&params);
 
     let fail_topic = remitwise_topic(&env, symbol_short!("flow_fail"));
     let fail_event = env
@@ -1795,9 +1912,9 @@ fn test_unsigned_and_signed_flow_stats_parity() {
 
     let unsigned_executor = Address::generate(&env);
     let signed_executor = Address::generate(&env);
-    let mock_id = env.register_contract(None, MockContract);
+    let params = flow_params_stored(&env, &client, &unsigned_executor, 1000);
 
-    client.execute_remittance_flow(&flow_params(&env, &unsigned_executor, &mock_id, 1000));
+    client.execute_remittance_flow(&params);
 
     let after_unsigned = client.get_execution_stats().unwrap();
     assert_eq!(after_unsigned.total_executions, 1);
@@ -1977,10 +2094,10 @@ fn test_valid_amount_unsigned_minimum_positive() {
     let (_, client) = register_orchestrator(&env);
     init_orchestrator(&env, &client, &owner);
 
-    let mock_id = env.register_contract(None, MockContract);
     let caller = Address::generate(&env);
+    let params = flow_params_stored(&env, &client, &caller, 1);
 
-    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 1));
+    let result = client.try_execute_remittance_flow(&params);
     assert!(
         result.is_ok(),
         "amount=1 should be accepted as valid positive amount"
@@ -2180,12 +2297,30 @@ mod mock_hostile_all_fail {
 fn test_exec_lock_released_when_hostile_downstream_fails_savings() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, MockContract);
     let mock_id = env.register_contract(None, mock_hostile_all_fail::Contract);
-    let caller = Address::generate(&env);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &rs, &mock_id, &bp, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw,
+        remittance_split: rs,
+        savings: mock_id,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     // Hostile savings step → CrossContractCallFailed.
     assert_eq!(result, Err(Ok(OrchestratorError::CrossContractCallFailed)));
     // EXEC_LOCK must be unlocked — a subsequent call must not see ExecutionLocked.
@@ -2197,12 +2332,30 @@ fn test_exec_lock_released_when_hostile_downstream_fails_savings() {
 fn test_exec_lock_released_when_hostile_downstream_fails_bill() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, MockContract);
+    let sg = env.register_contract(None, MockContract);
     let mock_id = env.register_contract(None, mock_fail_bill::Contract);
-    let caller = Address::generate(&env);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &rs, &sg, &mock_id, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw,
+        remittance_split: rs,
+        savings: sg,
+        bills: mock_id,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     // Unsigned path does not enable compensation (compensate_on_failure=false),
     // so CrossContractCallFailed is expected instead of RemittanceFlowRolledBack.
     assert_eq!(result, Err(Ok(OrchestratorError::CrossContractCallFailed)));
@@ -2215,47 +2368,89 @@ fn test_exec_lock_released_when_hostile_downstream_fails_bill() {
 fn test_lock_recovers_for_subsequent_valid_call_after_hostile_failure() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, MockContract);
     let hostile_id = env.register_contract(None, mock_hostile_all_fail::Contract);
-    let good_id = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &rs, &hostile_id, &bp, &ins);
+
     let caller = Address::generate(&env);
-
-    // First call — hostile downstream, must fail.
-    let _ = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &hostile_id));
-    assert!(!client.get_execution_state());
-
-    // Second call — well-behaved downstream, must succeed.
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &good_id));
-    assert_eq!(result, Ok(Ok(())));
-    assert!(!client.get_execution_state());
-}
-
-fn flow_params_single(_env: &Env, caller: &Address, mock_id: &Address) -> RemittanceFlowParams {
-    RemittanceFlowParams {
+    let params_hostile = RemittanceFlowParams {
         caller: caller.clone(),
         total_amount: 10_000i128,
-        family_wallet: mock_id.clone(),
-        remittance_split: mock_id.clone(),
-        savings: mock_id.clone(),
-        bills: mock_id.clone(),
-        insurance: mock_id.clone(),
+        family_wallet: fw.clone(),
+        remittance_split: rs.clone(),
+        savings: hostile_id,
+        bills: bp.clone(),
+        insurance: ins.clone(),
         goal_id: 1,
         bill_id: 1,
         policy_id: 1,
-    }
+    };
+
+    // First call — hostile downstream, must fail.
+    let _ = client.try_execute_remittance_flow(&params_hostile);
+    assert!(!client.get_execution_state());
+
+    // Second call on a fresh orchestrator with well-behaved downstream — must succeed.
+    let (orch2_id, client2) = register_orchestrator(&env);
+    let owner2 = Address::generate(&env);
+    let fw2 = env.register_contract(None, MockContract);
+    let rs2 = env.register_contract(None, MockContract);
+    let good_id = env.register_contract(None, MockContract);
+    let bp2 = env.register_contract(None, MockContract);
+    let ins2 = env.register_contract(None, MockContract);
+    client2.init(&owner2, &fw2, &rs2, &good_id, &bp2, &ins2);
+
+    let params_good = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw2,
+        remittance_split: rs2,
+        savings: good_id,
+        bills: bp2,
+        insurance: ins2,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client2.try_execute_remittance_flow(&params_good);
+    assert_eq!(result, Ok(Ok(())));
+    assert!(!client2.get_execution_state());
 }
 
 #[test]
 fn test_split_0_allocations_returns_invalid_amount_and_releases_lock() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
     let mock_id = env.register_contract(None, mock_split_0::Contract);
-    let caller = Address::generate(&env);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &mock_id, &sg, &bp, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw,
+        remittance_split: mock_id,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
     // EXEC_LOCK must be released (not stuck).
     assert!(!client.get_execution_state());
@@ -2265,12 +2460,30 @@ fn test_split_0_allocations_returns_invalid_amount_and_releases_lock() {
 fn test_split_1_allocation_returns_invalid_amount_and_releases_lock() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
     let mock_id = env.register_contract(None, mock_split_1::Contract);
-    let caller = Address::generate(&env);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &mock_id, &sg, &bp, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw,
+        remittance_split: mock_id,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
     assert!(!client.get_execution_state());
 }
@@ -2279,12 +2492,30 @@ fn test_split_1_allocation_returns_invalid_amount_and_releases_lock() {
 fn test_split_3_allocations_returns_invalid_amount_and_releases_lock() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
     let mock_id = env.register_contract(None, mock_split_3::Contract);
-    let caller = Address::generate(&env);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &mock_id, &sg, &bp, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw,
+        remittance_split: mock_id,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
     assert!(!client.get_execution_state());
 }
@@ -2293,12 +2524,30 @@ fn test_split_3_allocations_returns_invalid_amount_and_releases_lock() {
 fn test_split_4_allocations_succeeds() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
     let mock_id = env.register_contract(None, mock_split_4::Contract);
-    let caller = Address::generate(&env);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &mock_id, &sg, &bp, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw,
+        remittance_split: mock_id,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     assert!(
         result.is_ok(),
         "4-allocation split should succeed: {:?}",
@@ -2311,12 +2560,30 @@ fn test_split_4_allocations_succeeds() {
 fn test_split_negative_allocation_returns_invalid_amount_and_releases_lock() {
     let env = Env::default();
     env.mock_all_auths();
-    let orchestrator_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
     let mock_id = env.register_contract(None, mock_split_negative::Contract);
-    let caller = Address::generate(&env);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    client.init(&owner, &fw, &mock_id, &sg, &bp, &ins);
 
-    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    let caller = Address::generate(&env);
+    let params = RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: fw,
+        remittance_split: mock_id,
+        savings: sg,
+        bills: bp,
+        insurance: ins,
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    };
+
+    let result = client.try_execute_remittance_flow(&params);
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
     // No downstream add_to_goal/pay_bill/pay_premium must have been called —
     // the lock is released, confirming we exited cleanly before execution.
@@ -2841,6 +3108,135 @@ fn second_bump_emits_correct_old_and_new() {
     assert_eq!(bump_payloads.len(), 2);
     assert_eq!(bump_payloads[0], (0u64, 1u64));
     assert_eq!(bump_payloads[1], (1u64, 2u64));
+}
+
+#[test]
+fn bump_reverts_when_any_downstream_rejects() {
+    for rejected_index in 0..5 {
+        let env = Env::default();
+        env.mock_all_auths();
+        let orchestrator_id = env.register_contract(None, Orchestrator);
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+        let owner = Address::generate(&env);
+        let mut downstreams = std::vec![
+            env.register_contract(None, MockContract),
+            env.register_contract(None, MockContract),
+            env.register_contract(None, MockContract),
+            env.register_contract(None, MockContract),
+            env.register_contract(None, MockContract),
+        ];
+        let rejecting = env.register_contract(None, epoch_bump_mock::Contract);
+        epoch_bump_mock::ContractClient::new(&env, &rejecting).configure(&true, &false);
+        downstreams[rejected_index] = rejecting.clone();
+        client.init(
+            &owner,
+            &downstreams[0],
+            &downstreams[1],
+            &downstreams[2],
+            &downstreams[3],
+            &downstreams[4],
+        );
+
+        assert_eq!(
+            client.try_bump_actor_epoch(&owner),
+            Err(Ok(OrchestratorError::DownstreamEpochBumpFailed))
+        );
+        assert_eq!(client.get_actor_epoch_public(), 0);
+        for (index, downstream) in downstreams.iter().enumerate() {
+            let epoch = if index == rejected_index {
+                epoch_bump_mock::ContractClient::new(&env, downstream).get_stored_epoch()
+            } else {
+                MockContractClient::new(&env, downstream).get_cross_contract_epoch()
+            };
+            assert_eq!(epoch, 0, "downstream {index} changed despite transaction revert");
+        }
+    }
+}
+
+#[test]
+fn bump_reverts_when_downstream_reports_wrong_epoch() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let owner = Address::generate(&env);
+    let fw = env.register_contract(None, MockContract);
+    let wrong_epoch = env.register_contract(None, epoch_bump_mock::Contract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+    epoch_bump_mock::ContractClient::new(&env, &wrong_epoch).configure(&false, &true);
+    client.init(&owner, &fw, &wrong_epoch, &sg, &bp, &ins);
+
+    assert_eq!(
+        client.try_bump_actor_epoch(&owner),
+        Err(Ok(OrchestratorError::DownstreamEpochBumpFailed))
+    );
+    assert_eq!(client.get_actor_epoch_public(), 0);
+    assert_eq!(
+        epoch_bump_mock::ContractClient::new(&env, &wrong_epoch).get_stored_epoch(),
+        0
+    );
+    assert_eq!(
+        MockContractClient::new(&env, &fw).get_cross_contract_epoch(),
+        0
+    );
+    assert_eq!(
+        MockContractClient::new(&env, &sg).get_cross_contract_epoch(),
+        0
+    );
+    assert_eq!(
+        MockContractClient::new(&env, &bp).get_cross_contract_epoch(),
+        0
+    );
+    assert_eq!(
+        MockContractClient::new(&env, &ins).get_cross_contract_epoch(),
+        0
+    );
+}
+
+#[test]
+fn bump_succeeds_and_all_epochs_match() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    assert_eq!(client.bump_actor_epoch(&owner), 1);
+    assert_eq!(
+        client.get_epoch_status(),
+        soroban_sdk::vec![
+            &env,
+            (symbol_short!("orch"), 1u64),
+            (symbol_short!("family"), 1u64),
+            (symbol_short!("split"), 1u64),
+            (symbol_short!("savings"), 1u64),
+            (symbol_short!("bills"), 1u64),
+            (symbol_short!("insur"), 1u64),
+        ]
+    );
+}
+
+#[test]
+fn flow_after_successful_bump_executes() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+    let executor = Address::generate(&env);
+
+    assert_eq!(client.bump_actor_epoch(&owner), 1);
+    let deadline = signed_flow_deadline(&env);
+    let hash = signed_flow_hash(&env, &executor, 10_000, 0, deadline);
+    assert_eq!(
+        client.try_execute_remittance_flow_signed(
+            &executor,
+            &10_000,
+            &0,
+            &deadline,
+            &hash,
+            &1,
+        ),
+        Ok(Ok(true))
+    );
 }
 
 // ---------------------------------------------------------------------------

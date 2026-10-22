@@ -93,6 +93,21 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Emergency Kill Switch (`emergency_killswitch`)
 
+### v0.2.1
+
+- **Summary**: Restored missing checked-arithmetic helpers (`checked_add_u64`, `checked_add_u32`, `recovery_ready_at`, `snapshot_age`), fixed error discriminants, and repaired pagination test compilation (Issue #1865).
+- **Changes**:
+  - `activate` now computes the recovery deadline with checked arithmetic in the validation phase (previously `saturating_add`, which silently pinned the deadline at `u64::MAX` on overflow); a near-`u64::MAX` clock returns `Error::Overflow` with **zero** writes — no orphaned activation markers.
+  - `bump_kill_switch_epoch` / `configure_signers*` epoch increments and `migrate_storage` step advances return `Error::Overflow` without partially updating persistent state (all checks precede all writes).
+  - `restore_from_snapshot` rejects future-dated snapshots (`now < taken_at`) with `Error::Overflow` instead of underflowing the snapshot age.
+  - Pagination test module compiles again (`vec!` import, test-only `std` for `format!`, `&1` threshold args, `push_back` construction instead of collecting an iterator into `soroban_sdk::Vec`). No assertions or production behavior changed.
+- **Error Discriminants (ABI decision)**:
+  - `Error::Overflow = 20` — **keeps the pinned value.** `20` was already asserted by existing tests (`epoch_mismatch_error_discriminant_is_seven`, `error_discriminants_are_stable`) and documented in `ACTIVATION_RECOVERY_POLICY.md`, so downstream integrations treating `20` as the overflow code continue to work unchanged.
+  - `Error::InvalidCursor = 21` — moved from `20` to make room. This is safe: `InvalidCursor` is declared but **never produced or matched** by any entry point, test, or indexer in this repository (pagination cursors out of range return an empty page, not an error), so no pinned contract exists for its value.
+  - All other discriminants (`1..=19`) are preserved.
+- **Migration Notes**: No storage migration required. Off-chain code keying on `Error::Overflow == 20` is unaffected; do not key on `InvalidCursor == 20` (it is now `21`).
+- **Tests**: Added regression tests covering `checked_add_*` overflow/happy paths, `recovery_ready_at` at the `u64::MAX` boundary, future-dated snapshot rejection with state preservation, the exact `SNAPSHOT_TTL` / `SNAPSHOT_TTL + 1` restore boundary, and signer-set preservation when the signer epoch is `u64::MAX`.
+
 ### v0.2.0
 
 - **Summary**: Added a versioned, correlation-tagged control/audit event stream for every committed emergency transition — pause, recovery, threshold approval, and administrator rotation (Issue #1761).

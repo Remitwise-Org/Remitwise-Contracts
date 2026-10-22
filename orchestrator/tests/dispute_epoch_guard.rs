@@ -48,6 +48,17 @@ impl MockDep {
     pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _goal_id: u32, _amount: i128) {}
     pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _bill_id: u32) {}
     pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _policy_id: u32) {}
+    pub fn bump_cross_contract_epoch(env: Env, _orchestrator: Address) {
+        let key = symbol_short!("EPOCH");
+        let epoch: u64 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(epoch + 1));
+    }
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("EPOCH"))
+            .unwrap_or(0)
+    }
 }
 
 // ---------------------------------------------------------------------------
