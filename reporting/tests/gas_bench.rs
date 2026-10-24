@@ -716,8 +716,9 @@ fn bench_archive_reports_5() {
     );
 
     // Use u64::MAX as cutoff to archive all stored reports.
-    let (cpu, mem, archived_count) =
-        measure(&env, || client.archive_old_reports(&admin, &user, &u64::MAX, &5));
+    let (cpu, mem, archived_count) = measure(&env, || {
+        client.archive_old_reports(&admin, &user, &u64::MAX, &5)
+    });
 
     assert_eq!(archived_count, 5);
 
@@ -753,8 +754,9 @@ fn bench_archive_reports_25() {
         &Address::generate(&env),
     );
 
-    let (cpu, mem, archived_count) =
-        measure(&env, || client.archive_old_reports(&admin, &user, &u64::MAX, &25));
+    let (cpu, mem, archived_count) = measure(&env, || {
+        client.archive_old_reports(&admin, &user, &u64::MAX, &25)
+    });
 
     assert_eq!(archived_count, 25);
 
@@ -791,8 +793,9 @@ fn bench_archive_reports_50() {
         &Address::generate(&env),
     );
 
-    let (cpu, mem, archived_count) =
-        measure(&env, || client.archive_old_reports(&admin, &user, &u64::MAX, &50));
+    let (cpu, mem, archived_count) = measure(&env, || {
+        client.archive_old_reports(&admin, &user, &u64::MAX, &50)
+    });
 
     assert_eq!(archived_count, 50);
 

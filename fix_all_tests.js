@@ -4,12 +4,26 @@ const path = require('path');
 const projectRoot = process.cwd();
 
 const filesToFix = [
-    path.join(projectRoot, 'insurance', 'src', 'test.rs')
+    path.join(projectRoot, 'orchestrator', 'src', 'test.rs')
 ];
 
 filesToFix.forEach(filePath => {
     if (!fs.existsSync(filePath)) return;
     let content = fs.readFileSync(filePath, 'utf8');
+
+    // Ensure the orchestrator test target compiles: soroban-sdk testutils
+    // must be enabled for the test target.
+    const cargoTomlPath = path.join(projectRoot, 'orchestrator', 'Cargo.toml');
+    if (fs.existsSync(cargoTomlPath)) {
+        let cargoToml = fs.readFileSync(cargoTomlPath, 'utf8');
+        if (!/\[dev-dependencies\]/.test(cargoToml)) {
+            cargoToml += '\n[dev-dependencies]\nsoroban-sdk = { workspace = true, features = ["testutils"] }\n';
+        } else if (!/soroban-sdk[^\n]*testutils/.test(cargoToml)) {
+            cargoToml = cargoToml.replace(/\[dev-dependencies\]/, '[dev-dependencies]\nsoroban-sdk = { workspace = true, features = ["testutils"] }');
+        }
+        fs.writeFileSync(cargoTomlPath, cargoToml);
+        console.log(`Successfully updated ${cargoTomlPath}`);
+    }
 
     // Fix set_ledger_time(&env, 1000) -> set_ledger_time(&env, 1, 1000)
     content = content.replace(/set_ledger_time\s*\(\s*&env\s*,\s*([0-9a-zA-Z_+\-*/\s]+)\)/g, 'set_ledger_time(&env, 1, $1)');

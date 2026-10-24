@@ -289,6 +289,10 @@ This document provides a comprehensive access-control matrix mapping each public
 | `restore_from_snapshot` | Owner | `caller.require_auth()`; must equal stored `OWNER`, and the snapshot's own recorded owner must still match. Also enforces `require_recent_snapshot` (fails `SnapshotTooOld` if the snapshot is stale) and a schema-version check. Consumes (deletes) the snapshot on success. |
 | `discard_snapshot` | Owner | `caller.require_auth()`; must equal stored `OWNER`. Deletes a pending snapshot without restoring it. |
 | `get_execution_state` | Anyone | No auth. Returns whether the reentrancy lock (`EXEC_LOCK`) is currently held. |
+| `propose_dependency_update` | Owner | `caller.require_auth()`; must equal stored `OWNER` or `Unauthorized`. Validates the new address is not the owner, not the orchestrator itself, and not equal to any *other* currently configured dependency (`DuplicateDependency`). Stores a single `PendingDependencyUpdate { kind, new_address, eta = now + DEP_TIMELOCK_SECS }` per `DependencyKind` (86,400s timelock). Emits `("orch", "dep_prop")`. |
+| `execute_dependency_update` | Owner | `caller.require_auth()`; must equal stored `OWNER`. Requires `now >= eta` (`TimelockNotElapsed` otherwise) and rejects while `EXEC_LOCK` is held. Writes the rotated address, clears the pending entry, and provisions the new downstream contract: for `SavingsGoals` it first calls `set_trusted_orchestrator(orch, orch)`; then reads the new contract's cross-contract epoch, fails `EpochMismatch` if it is ahead of `ACTOR_EPOCH` or needs more than `MAX_EPOCH_CATCHUP` (32) bumps, and otherwise bumps it to `ACTOR_EPOCH`. Any failure reverts the whole update. Emits `("orch", "dep_upd")` with `(kind, old, new)`. |
+| `cancel_dependency_update` | Owner | `caller.require_auth()`; must equal stored `OWNER`. Clears the pending update for the given `DependencyKind`. |
+| `get_pending_dependency_update` | Anyone | No auth. Returns the pending `PendingDependencyUpdate` for a `DependencyKind`, if any. |
 
 ### Cross-Contract Call Constraints
 
@@ -319,12 +323,18 @@ The orchestrator makes the following cross-contract calls (via `execute_remittan
    - Orchestrator's own contract address acts as escrow/holder
    - Balance is zeroed before the call (checks-effects-interactions) to prevent reentrant double-claims
 
+7. **Downstream Dependency Rotation** (`set_trusted_orchestrator`, `get_cross_contract_epoch`, `bump_cross_contract_epoch`, called from `execute_dependency_update`)
+   - Provisions a freshly deployed downstream contract during an owner-gated, timelocked address rotation
+   - `SavingsGoals` is self-registered by the orchestrator (`set_trusted_orchestrator(orch, orch)`); other kinds require the operator to have already trusted this orchestrator
+   - The new contract's epoch is bumped up to `ACTOR_EPOCH` (capped at `MAX_EPOCH_CATCHUP` = 32 calls); any mismatch or untrusted contract reverts the update
+
 ### Risky Functions - Orchestrator
 - **`execute_remittance_flow_signed`**: The highest-value entrypoint in the contract — combines nonce/deadline/request-hash replay protection with actor-epoch validation specifically to defend against relayer-submitted, pre-signed transactions being replayed or redirected to different goal/bill/policy IDs. Any weakening of `require_nonce_hardened`, `compute_request_hash`, or `verify_matching_epoch` reintroduces a fund-redirection risk. Bump `bump_actor_epoch` if a signing key is suspected compromised.
 - **`execute_remittance_flow`**: Executes multiple cross-contract operations atomically under a reentrancy lock. If any step fails, previously-applied steps are compensated (best-effort) and the flow reports `RemittanceFlowRolledBack`.
 - **`execute_flow_fanout`**: Deliberately has **no rollback** — a partial failure (e.g. bill payment succeeds but insurance premium fails) leaves state partially applied by design. Callers must inspect `FanOutFlowResult` and handle partial success themselves.
 - **`claim_rewards_summary_external`**: Calls an externally-supplied `reward_token` address with no allowlist — any SEP-41-shaped contract can be passed. Combined with the reentrancy guard this is safe from double-spend, but a malicious `reward_token` could still revert/misbehave in ways worth fuzzing.
 - **`restore_from_snapshot`**: Can roll back dependency addresses, execution-lock state, and actor epoch to a prior snapshot. Protected by `require_recent_snapshot`, but an owner error here has contract-wide blast radius.
+- **`execute_dependency_update`**: Rotates one of the five downstream dependency addresses after a 24-hour timelock. Provisioning (trusted-orchestrator registration for `SavingsGoals`, epoch catch-up) is validated and reverts the whole update on failure, so a mis-provisioned contract can never be swapped in. Still owner-privileged: an owner error here redirects all flows for that dependency, so the timelock is the only user-observable safeguard.
 
 ---
 
@@ -485,6 +495,8 @@ not inferred. "Own copy" means the contract defines the constant locally (someti
 | `MAX_SCHEDULES_PER_OWNER` | 50 | `insurance` (premium schedules); `remittance_split` (remittance schedules) — two independent constants of the same name/value in different contracts | Per-owner schedule cap in each contract |
 | `MAX_GOALS_PER_OWNER` | 2,000 | `savings_goals` | Per-owner goal cap (counts active **and** archived goals together), enforced in `create_goal` |
 | `MAX_USED_NONCES_PER_ADDR` | 256 | `orchestrator`, `remittance_split` (independent constants) | Bounds the per-address used-nonce list for replay protection |
+| `DEP_TIMELOCK_SECS` | 86,400 | `orchestrator` | Timelock between `propose_dependency_update` and `execute_dependency_update` for downstream address rotation |
+| `MAX_EPOCH_CATCHUP` | 32 | `orchestrator` | Cap on `bump_cross_contract_epoch` calls made while provisioning a newly rotated downstream contract; exceeding it fails with `EpochMismatch` |
 | `MAX_ITEMS_PER_REPORT` / `MAX_TOP_N` | 10 | `remitwise-common` (`MAX_TOP_N`); `reporting` aliases it as `MAX_ITEMS_PER_REPORT` | Hard cap on `get_top_bills_report` / `get_top_savings_report` results, enforced by bounded sorted-insertion plus a defence-in-depth `require_bounded_top_n` guard |
 | `DEP_PAGE_LIMIT` | 50 | `reporting` | Page size `reporting` uses internally when it paginates through a *dependency* contract's data (e.g. walking all of a user's bills/goals to build a Top-N report) |
 | `MAX_PAUSED_FUNCTIONS` | 10 | `emergency_killswitch` | Cap on `PausedFunctions(module_id)`, enforced by `pause_function` |

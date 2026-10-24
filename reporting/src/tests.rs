@@ -2346,7 +2346,10 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
     assert_eq!(after_second_archive.archived_reports, 9);
 
     set_ledger_time(&env, 900, base_ts + 500);
-    assert_eq!(client.cleanup_old_reports(&admin, &user, &(base_ts + 600), &100), 9);
+    assert_eq!(
+        client.cleanup_old_reports(&admin, &user, &(base_ts + 600), &100),
+        9
+    );
     let final_stats = client.get_storage_stats();
     assert_eq!(final_stats.active_reports, 0);
     assert_eq!(final_stats.archived_reports, 0);
@@ -4134,8 +4137,7 @@ fn test_migration_moves_legacy_data() {
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items.get(0).unwrap().period_key, 100u64);
 
-    let grant_expiry =
-        client.viewer_grant_expiry(&user_a, &viewer, &crate::ReportScope::All);
+    let grant_expiry = client.viewer_grant_expiry(&user_a, &viewer, &crate::ReportScope::All);
     assert_eq!(grant_expiry, 1_800_000_000u64);
 }
 

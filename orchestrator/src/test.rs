@@ -505,11 +505,26 @@ fn flow_params_stored(
 ) -> RemittanceFlowParams {
     let (fw, rs, sg, bp, ins) = env.as_contract(&client.address, || {
         (
-            env.storage().instance().get(&symbol_short!("FW_ADDR")).unwrap(),
-            env.storage().instance().get(&symbol_short!("RS_ADDR")).unwrap(),
-            env.storage().instance().get(&symbol_short!("SG_ADDR")).unwrap(),
-            env.storage().instance().get(&symbol_short!("BP_ADDR")).unwrap(),
-            env.storage().instance().get(&symbol_short!("INS_ADDR")).unwrap(),
+            env.storage()
+                .instance()
+                .get(&symbol_short!("FW_ADDR"))
+                .unwrap(),
+            env.storage()
+                .instance()
+                .get(&symbol_short!("RS_ADDR"))
+                .unwrap(),
+            env.storage()
+                .instance()
+                .get(&symbol_short!("SG_ADDR"))
+                .unwrap(),
+            env.storage()
+                .instance()
+                .get(&symbol_short!("BP_ADDR"))
+                .unwrap(),
+            env.storage()
+                .instance()
+                .get(&symbol_short!("INS_ADDR"))
+                .unwrap(),
         )
     });
     RemittanceFlowParams {
@@ -618,7 +633,7 @@ fn test_execute_flow_success() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (orchestrator_id, client) = register_orchestrator(&env);
+    let (_orchestrator_id, client) = register_orchestrator(&env);
     let owner = Address::generate(&env);
     init_orchestrator(&env, &client, &owner);
 
@@ -2290,8 +2305,7 @@ fn test_flow_fail_does_not_leak_sensitive_amount() {
         policy_id: 1,
     };
 
-    let _ =
-        client.try_execute_remittance_flow(&params);
+    let _ = client.try_execute_remittance_flow(&params);
 
     let fail_topic = remitwise_topic(&env, symbol_short!("flow_fail"));
     let fail_event = env
@@ -3793,7 +3807,10 @@ fn bump_reverts_when_any_downstream_rejects() {
             } else {
                 MockContractClient::new(&env, downstream).get_cross_contract_epoch()
             };
-            assert_eq!(epoch, 0, "downstream {index} changed despite transaction revert");
+            assert_eq!(
+                epoch, 0,
+                "downstream {index} changed despite transaction revert"
+            );
         }
     }
 }
@@ -3872,14 +3889,7 @@ fn flow_after_successful_bump_executes() {
     let deadline = signed_flow_deadline(&env);
     let hash = signed_flow_hash(&env, &executor, 10_000, 0, deadline);
     assert_eq!(
-        client.try_execute_remittance_flow_signed(
-            &executor,
-            &10_000,
-            &0,
-            &deadline,
-            &hash,
-            &1,
-        ),
+        client.try_execute_remittance_flow_signed(&executor, &10_000, &0, &deadline, &hash, &1,),
         Ok(Ok(true))
     );
 }

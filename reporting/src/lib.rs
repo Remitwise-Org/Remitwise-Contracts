@@ -925,9 +925,11 @@ impl ReportingContract {
             .instance()
             .get(&symbol_short!("ADMIN"))
             .ok_or(ReportingError::NotInitialized)?;
-        env.storage()
-            .persistent()
-            .remove(&DataKey::ViewerGrant(owner.clone(), viewer.clone(), scope));
+        env.storage().persistent().remove(&DataKey::ViewerGrant(
+            owner.clone(),
+            viewer.clone(),
+            scope,
+        ));
         // Security: until migration completes, reads fall back to the legacy
         // map. Remove the legacy entry too so a revoked grant cannot be
         // resurrected by the fallback path.
@@ -2797,11 +2799,16 @@ impl ReportingContract {
     // Persistent Storage Helper Methods
     // -----------------------------------------------------------------------
 
-    fn read_persistent<T: soroban_sdk::TryFromVal<Env, Val>>(env: &Env, key: &DataKey) -> Option<T> {
+    fn read_persistent<T: soroban_sdk::TryFromVal<Env, Val>>(
+        env: &Env,
+        key: &DataKey,
+    ) -> Option<T> {
         if env.storage().persistent().has(key) {
-            env.storage()
-                .persistent()
-                .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+            env.storage().persistent().extend_ttl(
+                key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
             env.storage().persistent().get(key)
         } else {
             None
@@ -2810,9 +2817,11 @@ impl ReportingContract {
 
     fn write_persistent<T: soroban_sdk::IntoVal<Env, Val>>(env: &Env, key: &DataKey, val: &T) {
         env.storage().persistent().set(key, val);
-        env.storage()
-            .persistent()
-            .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 
     fn write_archive<T: soroban_sdk::IntoVal<Env, Val>>(env: &Env, key: &DataKey, val: &T) {
@@ -2845,9 +2854,11 @@ impl ReportingContract {
     fn load_archived_report(env: &Env, user: &Address, period_key: u64) -> Option<ArchivedReport> {
         let key = DataKey::Archived(user.clone(), period_key);
         if env.storage().persistent().has(&key) {
-            env.storage()
-                .persistent()
-                .extend_ttl(&key, ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+            env.storage().persistent().extend_ttl(
+                &key,
+                ARCHIVE_LIFETIME_THRESHOLD,
+                ARCHIVE_BUMP_AMOUNT,
+            );
             return env.storage().persistent().get(&key);
         }
         // Fallback to legacy instance ARCH_RPT map
