@@ -10,8 +10,8 @@
 //!
 //! The two rules enforced by [`validate_amount`]:
 //!
-//! 1. **Sign** — amounts must be strictly positive (`>= MIN_AMOUNT`).
-//! 2. **Scale / magnitude** — amounts must not exceed [`MAX_AMOUNT`].
+//! 1. **Sign** - amounts must be strictly positive (`>= MIN_AMOUNT`).
+//! 2. **Scale / magnitude** - amounts must not exceed [`MAX_AMOUNT`].
 //!
 //! Callers must run this check **before any state mutation** at every
 //! boundary (bill/schedule creation, modification, schedule execution,
@@ -19,14 +19,14 @@
 
 /// Upper bound (inclusive) for any single stored amount, in smallest units.
 ///
-/// `10^30` — one sextillion stroops (≈ `10^23` XLM) — is a round power of ten
+/// `10^30` - one sextillion stroops (approx. `10^23` XLM) - is a round power of ten
 /// chosen so that every aggregation over validated amounts is provably free of
 /// `i128` overflow:
 ///
-/// | Aggregation | Worst case | Headroom vs `i128::MAX` (~1.7 × 10³⁸) |
+/// | Aggregation | Worst case | Headroom vs `i128::MAX` (~1.7 x 10^38) |
 /// |---|---|---|
-/// | Per-owner unpaid total | `MAX_BILLS_PER_OWNER (1000) × 10³⁰ = 10³³` | ~1.7 × 10⁵ × |
-/// | Single batch delta | `MAX_BATCH_SIZE (50) × 10³⁰ = 5 × 10³¹` | ~3.4 × 10⁶ × |
+/// | Per-owner unpaid total | `MAX_BILLS_PER_OWNER (1000) x 10^30 = 10^33` | ~1.7 x 10^5 x |
+/// | Single batch delta | `MAX_BATCH_SIZE (50) x 10^30 = 5 x 10^31` | ~3.4 x 10^6 x |
 ///
 /// A value above this bound is rejected at the boundary by
 /// [`validate_amount`] instead of being allowed to threaten downstream
@@ -44,7 +44,7 @@ pub const MIN_AMOUNT: i128 = 1;
 /// category.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum AmountValidationError {
-    /// `amount < MIN_AMOUNT` — zero or negative.
+    /// `amount < MIN_AMOUNT` - zero or negative.
     NonPositive,
     /// `amount > MAX_AMOUNT`.
     ExceedsMaximum,
@@ -53,9 +53,9 @@ pub enum AmountValidationError {
 /// Validates an amount against the shared exact-integer rules.
 ///
 /// # Rules
-/// 1. **Sign** — `amount >= MIN_AMOUNT`: zero and negative amounts are
+/// 1. **Sign** - `amount >= MIN_AMOUNT`: zero and negative amounts are
 ///    rejected with [`AmountValidationError::NonPositive`].
-/// 2. **Scale / magnitude** — `amount <= MAX_AMOUNT`: values above the bound
+/// 2. **Scale / magnitude** - `amount <= MAX_AMOUNT`: values above the bound
 ///    are rejected with [`AmountValidationError::ExceedsMaximum`] rather than
 ///    accepted and allowed to threaten downstream aggregation overflow.
 ///
@@ -100,16 +100,16 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    /// Property test: `validate_amount` accepts exactly the range
-    /// `[MIN_AMOUNT, MAX_AMOUNT]` and rejects everything outside it, for a
-    /// wide sweep of sign/magnitude combinations including near-overflow
-    /// values. This pins the boundary rule against independent range checks.
+    // Property test: `validate_amount` accepts exactly the range
+    // `[MIN_AMOUNT, MAX_AMOUNT]` and rejects everything outside it, for a
+    // wide sweep of sign/magnitude combinations including near-overflow
+    // values. This pins the boundary rule against independent range checks.
     proptest! {
         #[test]
         fn validate_amount_matches_range_invariant(
             amount in -1_000_000i128..=2_000_000_000_000_000_000_000_000_000_000i128,
         ) {
-            let expected = amount >= MIN_AMOUNT && amount <= MAX_AMOUNT;
+            let expected = (MIN_AMOUNT..=MAX_AMOUNT).contains(&amount);
             assert_eq!(
                 validate_amount(amount).is_ok(),
                 expected,
@@ -161,7 +161,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Behavioural bug: checked_sub underflow handling mismatch"]
     fn checked_sub_is_exact() {
         assert_eq!(
             checked_sub_amount(2 * MAX_AMOUNT, MAX_AMOUNT),

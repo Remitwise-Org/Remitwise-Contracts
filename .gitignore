@@ -1,7 +1,6 @@
 /target
 **/*.rs.bk
 *.wasm
-.env
 .envrc
 *.log
 
@@ -38,3 +37,5 @@ BM/
 __pycache__/
 .gitignore
 branch_structure.json
+config.bat
+node_modules

@@ -561,6 +561,8 @@ pub enum OrchestratorError {
     TimelockNotElapsed = 17,
     /// No pending dependency-update proposal exists for the requested kind.
     NoPendingUpdate = 18,
+    DownstreamEpochBumpFailed = 19,
+    EmergencyPaused = 20,
 }
 
 #[contract]
@@ -618,13 +620,7 @@ impl Orchestrator {
         params: &RemittanceFlowParams,
     ) -> Result<(), OrchestratorError> {
         let routing = FlowRouting::from_params(env, params)?;
-        Self::run_remittance_fan_out(
-            env,
-            &params.caller,
-            params.total_amount,
-            &routing,
-            false,
-        )
+        Self::run_remittance_fan_out(env, &params.caller, params.total_amount, &routing, false)
     }
 
     /// Initialize the orchestrator with dependency contract addresses.
@@ -1047,16 +1043,29 @@ impl Orchestrator {
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        let s_res = interface::SavingsGoalsClient::new(&env, &routing.savings)
-            .try_add_to_goal(&orch, &epoch, &executor, &routing.goal_id, &savings_amt);
+        let s_res = interface::SavingsGoalsClient::new(&env, &routing.savings).try_add_to_goal(
+            &orch,
+            &epoch,
+            &executor,
+            &routing.goal_id,
+            &savings_amt,
+        );
         let s_ok = matches!(classify_call(s_res), StepOutcome::Success);
 
-        let b_res = interface::BillPaymentsClient::new(&env, &routing.bills)
-            .try_pay_bill(&orch, &epoch, &executor, &routing.bill_id);
+        let b_res = interface::BillPaymentsClient::new(&env, &routing.bills).try_pay_bill(
+            &orch,
+            &epoch,
+            &executor,
+            &routing.bill_id,
+        );
         let b_ok = matches!(classify_call(b_res), StepOutcome::Success);
 
-        let i_res = interface::InsuranceClient::new(&env, &routing.insurance)
-            .try_pay_premium(&orch, &epoch, &executor, &routing.policy_id);
+        let i_res = interface::InsuranceClient::new(&env, &routing.insurance).try_pay_premium(
+            &orch,
+            &epoch,
+            &executor,
+            &routing.policy_id,
+        );
         let i_ok = matches!(classify_premium(i_res), StepOutcome::Success);
 
         let savings = FanOutStepResult {
@@ -1693,12 +1702,8 @@ impl Orchestrator {
 
         let key = kind.storage_key();
         let old: Option<Address> = env.storage().instance().get(&key);
-        env.storage()
-            .instance()
-            .set(&key, &pending.new_address);
-        env.storage()
-            .instance()
-            .remove(&(DEP_PEND, kind as u32));
+        env.storage().instance().set(&key, &pending.new_address);
+        env.storage().instance().remove(&(DEP_PEND, kind as u32));
 
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("dep_upd")),
@@ -1735,10 +1740,8 @@ impl Orchestrator {
             return Err(OrchestratorError::NoPendingUpdate);
         }
         env.storage().instance().remove(&key);
-        env.events().publish(
-            (symbol_short!("orch"), symbol_short!("dep_cncl")),
-            kind,
-        );
+        env.events()
+            .publish((symbol_short!("orch"), symbol_short!("dep_cncl")), kind);
         Ok(true)
     }
 
@@ -2338,7 +2341,8 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            let s_res = s_client.try_add_to_goal(&orch, &epoch, caller, &routing.goal_id, &savings_amt);
+            let s_res =
+                s_client.try_add_to_goal(&orch, &epoch, caller, &routing.goal_id, &savings_amt);
             match classify_call(s_res) {
                 StepOutcome::Success => savings_done = true,
                 StepOutcome::ContractRejection => {

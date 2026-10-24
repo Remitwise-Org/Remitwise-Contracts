@@ -4,13 +4,18 @@
   "description": "Minimal event indexer for Remitwise smart contracts",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "build": "node init && tsc",
+    "start": "node init && node dist/index.js",
+    "dev": "node init && ts-node src/index.ts",
     "db:init": "node dist/db/init.js",
     "test": "jest"
   },
-  "keywords": ["stellar", "soroban", "indexer", "remitwise"],
+  "keywords": [
+    "stellar",
+    "soroban",
+    "indexer",
+    "remitwise"
+  ],
   "author": "Remitwise Team",
   "license": "MIT",
   "dependencies": {
