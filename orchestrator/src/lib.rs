@@ -571,13 +571,7 @@ impl Orchestrator {
         params: &RemittanceFlowParams,
     ) -> Result<(), OrchestratorError> {
         let routing = FlowRouting::from_params(env, params)?;
-        Self::run_remittance_fan_out(
-            env,
-            &params.caller,
-            params.total_amount,
-            &routing,
-            false,
-        )
+        Self::run_remittance_fan_out(env, &params.caller, params.total_amount, &routing, false)
     }
 
     /// Initialize the orchestrator with dependency contract addresses.
@@ -962,16 +956,29 @@ impl Orchestrator {
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        let s_res = interface::SavingsGoalsClient::new(&env, &routing.savings)
-            .try_add_to_goal(&orch, &epoch, &executor, &routing.goal_id, &savings_amt);
+        let s_res = interface::SavingsGoalsClient::new(&env, &routing.savings).try_add_to_goal(
+            &orch,
+            &epoch,
+            &executor,
+            &routing.goal_id,
+            &savings_amt,
+        );
         let s_ok = matches!(classify_call(s_res), StepOutcome::Success);
 
-        let b_res = interface::BillPaymentsClient::new(&env, &routing.bills)
-            .try_pay_bill(&orch, &epoch, &executor, &routing.bill_id);
+        let b_res = interface::BillPaymentsClient::new(&env, &routing.bills).try_pay_bill(
+            &orch,
+            &epoch,
+            &executor,
+            &routing.bill_id,
+        );
         let b_ok = matches!(classify_call(b_res), StepOutcome::Success);
 
-        let i_res = interface::InsuranceClient::new(&env, &routing.insurance)
-            .try_pay_premium(&orch, &epoch, &executor, &routing.policy_id);
+        let i_res = interface::InsuranceClient::new(&env, &routing.insurance).try_pay_premium(
+            &orch,
+            &epoch,
+            &executor,
+            &routing.policy_id,
+        );
         let i_ok = matches!(classify_premium(i_res), StepOutcome::Success);
 
         let savings = FanOutStepResult {
@@ -2042,7 +2049,8 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            let s_res = s_client.try_add_to_goal(&orch, &epoch, caller, &routing.goal_id, &savings_amt);
+            let s_res =
+                s_client.try_add_to_goal(&orch, &epoch, caller, &routing.goal_id, &savings_amt);
             match classify_call(s_res) {
                 StepOutcome::Success => savings_done = true,
                 StepOutcome::ContractRejection => {
